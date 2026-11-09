@@ -27,6 +27,7 @@ interface AuthContextValue {
   completeMfa: (mfaToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   reload: () => Promise<void>;
+  switchCompany: (companyId: string) => Promise<void>;
   can: (permission: string) => boolean;
 }
 
@@ -78,6 +79,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await apiGet<AuthUser>('/auth/me'));
   }, []);
 
+  const switchCompany = useCallback(
+    async (companyId: string) => {
+      accept(await apiSend<AuthResult>('post', '/auth/switch-company', { companyId }));
+      // Nothing cached from the previous company may be shown under the new one.
+      queryClient.clear();
+    },
+    [accept, queryClient],
+  );
+
   const value = useMemo(
     () => ({
       user,
@@ -86,9 +96,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       completeMfa,
       logout,
       reload,
+      switchCompany,
       can: (permission: string) => user?.permissions.includes(permission) ?? false,
     }),
-    [user, loading, login, completeMfa, logout, reload],
+    [user, loading, login, completeMfa, logout, reload, switchCompany],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

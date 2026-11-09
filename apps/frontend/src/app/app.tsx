@@ -11,6 +11,8 @@ import { GoamlReportsPage, SanctionsPage } from '@/features/compliance/complianc
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { DocumentsPage } from '@/features/documents/documents';
 import * as inventory from '@/features/inventory/inventory-pages';
+import * as operations from '@/features/inventory/operations-pages';
+import { CashBookPage, PartyStatementPage } from '@/features/accounting/ledgers-pages';
 import * as master from '@/features/master/master-pages';
 import { IntegrityPage, NotificationsPage } from '@/features/notifications/notifications';
 import { PlatformCompaniesPage } from '@/features/platform/platform-companies-page';
@@ -53,6 +55,13 @@ const guarded: [string, string, ReactNode][] = [
   ['/stock/adjustments', 'stock:read', <inventory.AdjustmentsPage key="a" />],
   ['/stock/transfers', 'stock:read', <inventory.TransfersPage key="t" />],
   ['/stock/movements', 'stock:read', <inventory.MovementsPage key="m" />],
+  ['/stock/reservations', 'stock:read', <operations.ReservationsPage key="rs" />],
+  ['/stock/counts', 'stock:read', <operations.CountsPage key="sc" />],
+  ['/stock/labels', 'stock:read', <operations.LabelsPage key="lb" />],
+  ['/purchase-orders', 'purchase:read', <operations.PurchaseOrdersPage key="po" />],
+  ['/goods-receipts', 'purchase:read', <operations.GoodsReceiptsPage key="gr" />],
+  ['/cash-book', 'payment:read', <CashBookPage key="cb" />],
+  ['/party-statements', 'report:read', <PartyStatementPage key="ps" />],
   ['/sales', 'sale:read', <TradeListPage key="sl" mode="sale" />],
   ['/sales/new', 'sale:create', <TradeEditorPage key="sn" mode="sale" />],
   ['/sales/:id', 'sale:read', <TradeDetailPage key="sd" mode="sale" />],

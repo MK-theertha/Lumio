@@ -150,6 +150,23 @@ export async function downloadFile(url: string, filename: string): Promise<void>
   URL.revokeObjectURL(link.href);
 }
 
+export async function downloadExport(
+  url: string,
+  filename: string,
+  format: 'csv' | 'xlsx' | 'pdf',
+  params?: object,
+): Promise<void> {
+  const response = await http.get<Blob>(url, {
+    params: { ...params, format },
+    responseType: 'blob',
+  });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(response.data);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 export async function downloadCsv(url: string, filename: string, params?: object): Promise<void> {
   const response = await http.get<Blob>(url, {
     params: { ...params, format: 'csv' },

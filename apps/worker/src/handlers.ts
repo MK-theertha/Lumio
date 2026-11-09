@@ -14,9 +14,17 @@ import {
 import { issueEInvoice } from '@lumio/backend/modules/einvoice/index.js';
 import { NIGHTLY_EVENT, runNightlyMaintenance } from '@lumio/backend/modules/maintenance/index.js';
 import { EMAIL_EVENT, type EmailMessage } from '@lumio/backend/modules/identity/index.js';
+import {
+  CREDIT_NOTE_ISSUED_EVENT,
+  documentPdf,
+  INVOICE_EMAIL_EVENT,
+  type Direction,
+} from '@lumio/backend/modules/trade/index.js';
+import type { PublishableEvent } from '@lumio/backend/modules/platform/outbox/index.js';
+import type { RequestContext } from '@lumio/backend/shared/context.js';
 import { decrypt } from '@lumio/backend/shared/crypto.js';
 import { Types } from 'mongoose';
-import { createTransport } from 'nodemailer';
+import { createTransport, type Transporter } from 'nodemailer';
 import type { Logger } from 'pino';
 import type { EventHandler } from './queues.js';
 
@@ -44,8 +52,24 @@ function screen(trigger: ScreenableEvent['trigger']): EventHandler {
   };
 }
 
-export function createHandlers(logger: Logger): Record<string, EventHandler> {
-  const transport = createTransport(runtime().SMTP_URL);
+interface InvoiceEmail {
+  direction: Direction;
+  id: string;
+  sealedTo: string;
+}
+
+const systemContext = (event: PublishableEvent): RequestContext => ({
+  companyId: new Types.ObjectId(event.companyId),
+  userId: 'system',
+  branchScope: 'ALL',
+  permissions: new Set(),
+  correlationId: event.correlationId,
+});
+
+export function createHandlers(
+  logger: Logger,
+  transport: Pick<Transporter, 'sendMail'> = createTransport(runtime().SMTP_URL),
+): Record<string, EventHandler> {
   const screenSale = screen('SALE_POSTED');
   const scanner = configuredScanner();
   const store = createObjectStore(runtime());
@@ -60,7 +84,23 @@ export function createHandlers(logger: Logger): Record<string, EventHandler> {
       const { id } = event.payload as Payload;
       await issueEInvoice(new Types.ObjectId(event.companyId), id);
     },
-    [NIGHTLY_EVENT]: () => runNightlyMaintenance(logger, store),
+    [CREDIT_NOTE_ISSUED_EVENT]: (event) =>
+      issueEInvoice(new Types.ObjectId(event.companyId), (event.payload as Payload).id),
+    [INVOICE_EMAIL_EVENT]: async (event) => {
+      const { direction, id, sealedTo } = event.payload as InvoiceEmail;
+      const { number, pdf } = await documentPdf(systemContext(event), direction, id);
+      await transport.sendMail({
+        from: runtime().EMAIL_FROM,
+        to: decrypt(sealedTo),
+        subject: `Invoice ${number}`,
+        text: `Please find invoice ${number} attached.`,
+        attachments: [{ filename: `${number}.pdf`, content: pdf, contentType: 'application/pdf' }],
+      });
+    },
+    [NIGHTLY_EVENT]: () =>
+      runNightlyMaintenance(logger, store, (email) =>
+        transport.sendMail({ from: runtime().EMAIL_FROM, ...email }),
+      ),
     [DOCUMENT_UPLOADED_EVENT]: async (event) => {
       if (scanner) {
         await scanDocument(event.companyId, (event.payload as Payload).id, store, scanner);

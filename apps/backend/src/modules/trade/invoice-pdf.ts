@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import PDFDocument from 'pdfkit';
 import { dec, money } from '../../shared/decimal.js';
 
@@ -8,6 +9,7 @@ export interface PdfCompany {
 }
 
 interface PdfLine {
+  lineId: string;
   sku: string;
   productName: string;
   tag?: string;
@@ -31,6 +33,8 @@ export interface PdfInvoice {
   dueDate?: string;
   currency: string;
   supplierInvoiceNo?: string;
+  /** On a credit note, the invoice it corrects. */
+  originalNumber?: string;
   notes?: string;
   partySnapshot: { name: string; taxRegistrationNumber?: string; billingAddress?: string };
   lines: PdfLine[];
@@ -40,22 +44,37 @@ export interface PdfInvoice {
   grandTotal: string;
 }
 
+const require = createRequire(import.meta.url);
+const ARABIC = 'Arabic';
+const ARABIC_BOLD = 'Arabic-Bold';
+const fontFile = (style: string) =>
+  require.resolve(`@expo-google-fonts/noto-naskh-arabic/${style}/NotoNaskhArabic_${style}.ttf`);
+const hasArabic = (text: string) => /[\u0600-\u06FF]/.test(text);
+/** Kept as one run, because the line wrapper would otherwise lay out the words left to right. */
+const shaped = (text: string) => (hasArabic(text) ? text.replace(/ /g, '\u00A0') : text);
+
 const MARGIN = 36;
 const FONT = 'Helvetica';
 const BOLD = 'Helvetica-Bold';
 
 const COLUMNS = [
-  { title: 'Description', width: 269, align: 'left' },
-  { title: 'Gross (g)', width: 52, align: 'right' },
-  { title: 'Net (g)', width: 52, align: 'right' },
-  { title: 'Gold value', width: 66, align: 'right' },
-  { title: 'Making', width: 58, align: 'right' },
-  { title: 'Discount', width: 52, align: 'right' },
-  { title: 'Taxable', width: 66, align: 'right' },
-  { title: 'VAT %', width: 36, align: 'right' },
-  { title: 'VAT', width: 56, align: 'right' },
-  { title: 'Total', width: 64, align: 'right' },
+  { title: 'Description', arabic: 'الوصف', width: 269, align: 'left' },
+  { title: 'Gross (g)', arabic: 'الوزن القائم', width: 52, align: 'right' },
+  { title: 'Net (g)', arabic: 'الوزن الصافي', width: 52, align: 'right' },
+  { title: 'Gold value', arabic: 'قيمة الذهب', width: 66, align: 'right' },
+  { title: 'Making', arabic: 'المصنعية', width: 58, align: 'right' },
+  { title: 'Discount', arabic: 'الخصم', width: 52, align: 'right' },
+  { title: 'Taxable', arabic: 'الخاضع للضريبة', width: 66, align: 'right' },
+  { title: 'VAT %', arabic: 'النسبة', width: 36, align: 'right' },
+  { title: 'VAT', arabic: 'الضريبة', width: 56, align: 'right' },
+  { title: 'Total', arabic: 'الإجمالي', width: 64, align: 'right' },
 ] as const;
+
+const TITLES = {
+  SALE: { english: 'TAX INVOICE', arabic: 'فاتورة ضريبية' },
+  PURCHASE: { english: 'PURCHASE INVOICE', arabic: 'فاتورة شراء' },
+  CREDIT_NOTE: { english: 'TAX CREDIT NOTE', arabic: 'إشعار دائن ضريبي' },
+} as const;
 
 const day = (iso: string) => iso.slice(0, 10);
 
@@ -81,7 +100,7 @@ function lineCells(line: PdfLine): string[] {
 export function renderInvoicePdf(
   invoice: PdfInvoice,
   company: PdfCompany,
-  kind: 'SALE' | 'PURCHASE',
+  kind: 'SALE' | 'PURCHASE' | 'CREDIT_NOTE',
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const pdf = new PDFDocument({
@@ -95,36 +114,55 @@ export function renderInvoicePdf(
     pdf.on('data', (chunk: Buffer) => chunks.push(chunk));
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
+    pdf.registerFont(ARABIC, fontFile('400Regular'));
+    pdf.registerFont(ARABIC_BOLD, fontFile('700Bold'));
+
+    /** Names can be entered in Arabic, which the built-in Latin fonts cannot draw. */
+    const fontFor = (text: string, latin: string) =>
+      hasArabic(text) ? (latin === BOLD ? ARABIC_BOLD : ARABIC) : latin;
 
     const right = pdf.page.width - MARGIN;
     const bottom = pdf.page.height - MARGIN - 18;
 
     const tableHeader = (y: number): number => {
-      pdf.rect(MARGIN, y, right - MARGIN, 18).fill('#eeeeee');
-      pdf.fillColor('#000000').font(BOLD).fontSize(8);
+      pdf.rect(MARGIN, y, right - MARGIN, 28).fill('#eeeeee');
+      pdf.fillColor('#000000');
       let x = MARGIN;
       for (const column of COLUMNS) {
-        pdf.text(column.title, x + 3, y + 5, { width: column.width - 6, align: column.align });
+        const options = { width: column.width - 6, align: column.align };
+        pdf
+          .font(BOLD)
+          .fontSize(8)
+          .text(column.title, x + 3, y + 3, options);
+        pdf
+          .font(ARABIC)
+          .fontSize(7)
+          .text(shaped(column.arabic), x + 3, y + 12, options);
         x += column.width;
       }
-      return y + 22;
+      return y + 32;
     };
 
+    const title = TITLES[kind];
+    pdf.font(BOLD).fontSize(18).text(title.english, MARGIN);
+    pdf.font(ARABIC_BOLD).fontSize(13).text(shaped(title.arabic), MARGIN);
     pdf
-      .font(BOLD)
-      .fontSize(18)
-      .text(kind === 'SALE' ? 'TAX INVOICE' : 'PURCHASE INVOICE', MARGIN);
-    pdf.moveDown(0.4).font(BOLD).fontSize(11).text(company.legalName);
+      .moveDown(0.2)
+      .font(fontFor(company.legalName, BOLD))
+      .fontSize(11)
+      .text(shaped(company.legalName));
     pdf.font(FONT).fontSize(9);
     if (company.address) pdf.text(company.address);
     if (company.taxRegistrationNumber) pdf.text(`TRN: ${company.taxRegistrationNumber}`);
 
+    const companyBottom = pdf.y;
     const facts: [string, string | undefined][] = [
       ['Invoice no.', invoice.number],
       ['Date', day(invoice.docDate)],
       ['Due date', invoice.dueDate ? day(invoice.dueDate) : undefined],
       ['Currency', invoice.currency],
       ['Supplier invoice', invoice.supplierInvoiceNo],
+      ['Credits invoice', invoice.originalNumber],
     ];
     let factY = MARGIN;
     for (const [label, value] of facts) {
@@ -134,14 +172,17 @@ export function renderInvoicePdf(
       factY += 13;
     }
 
-    let y = Math.max(pdf.y, factY) + 14;
+    let y = Math.max(companyBottom, factY) + 14;
     const party = invoice.partySnapshot;
     pdf
       .font(BOLD)
       .fontSize(9)
-      .text(kind === 'SALE' ? 'Bill to' : 'Supplier', MARGIN, y);
-    pdf.font(FONT).text(party.name);
-    if (party.billingAddress) pdf.text(party.billingAddress);
+      .text(kind === 'PURCHASE' ? 'Supplier' : 'Bill to', MARGIN, y);
+    pdf.font(fontFor(party.name, FONT)).text(shaped(party.name));
+    if (party.billingAddress) {
+      pdf.font(fontFor(party.billingAddress, FONT)).text(shaped(party.billingAddress));
+    }
+    pdf.font(FONT);
     if (party.taxRegistrationNumber) pdf.text(`TRN: ${party.taxRegistrationNumber}`);
 
     y = tableHeader(pdf.y + 12);
@@ -160,7 +201,9 @@ export function renderInvoicePdf(
       let x = MARGIN;
       cells.forEach((cell, index) => {
         const column = COLUMNS[index] as (typeof COLUMNS)[number];
-        pdf.text(cell, x + 3, y, { width: column.width - 6, align: column.align });
+        pdf
+          .font(fontFor(cell, FONT))
+          .text(shaped(cell), x + 3, y, { width: column.width - 6, align: column.align });
         x += column.width;
       });
       y += height + 6;

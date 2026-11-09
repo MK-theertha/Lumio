@@ -19,6 +19,7 @@ const CHART: [string, string, string, string | null, boolean?][] = [
   ['1300', 'Input VAT recoverable', 'ASSET', 'INPUT_VAT'],
   ['1900', 'Inter-branch clearing', 'ASSET', 'INTER_BRANCH'],
   ['2000', 'Accounts payable', 'LIABILITY', 'AP'],
+  ['2050', 'Goods received not invoiced', 'LIABILITY', 'GRNI'],
   ['2100', 'Output VAT payable', 'LIABILITY', 'OUTPUT_VAT'],
   ['3000', 'Opening balance equity', 'EQUITY', 'OPENING_EQUITY'],
   ['3100', 'Retained earnings', 'EQUITY', 'RETAINED_EARNINGS'],

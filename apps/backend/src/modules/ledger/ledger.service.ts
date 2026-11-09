@@ -1,4 +1,5 @@
 import mongoose, { Types } from 'mongoose';
+import { runInTransaction } from '../../database/transaction.js';
 import { assertTransactional, type RequestContext } from '../../shared/context.js';
 import { d128, dec, Decimal } from '../../shared/decimal.js';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../shared/errors.js';
@@ -14,6 +15,10 @@ import {
 
 export interface PostingLine {
   role?: LedgerRole;
+  closing?: boolean;
+  currency?: string;
+  foreignAmount?: Decimal | string;
+  exchangeRate?: Decimal | string;
   accountId?: Types.ObjectId | string;
   debit?: Decimal | string;
   credit?: Decimal | string;
@@ -68,6 +73,10 @@ export async function postJournal(ctx: RequestContext, request: PostingRequest) 
     credit: Decimal;
     partyId?: Types.ObjectId | string;
     branchId: Types.ObjectId | string;
+    closing?: boolean;
+    currency?: string;
+    foreignAmount?: Types.Decimal128;
+    exchangeRate?: Types.Decimal128;
   }[] = [];
   for (const line of request.lines) {
     const debit = dec(line.debit);
@@ -85,6 +94,14 @@ export async function postJournal(ctx: RequestContext, request: PostingRequest) 
       credit,
       ...(line.partyId ? { partyId: line.partyId } : {}),
       branchId: line.branchId ?? request.branchId,
+      ...(line.closing ? { closing: true } : {}),
+      ...(line.currency && line.foreignAmount && line.exchangeRate
+        ? {
+            currency: line.currency,
+            foreignAmount: d128(line.foreignAmount),
+            exchangeRate: d128(line.exchangeRate),
+          }
+        : {}),
     });
   }
 
@@ -131,11 +148,9 @@ export async function postJournal(ctx: RequestContext, request: PostingRequest) 
   );
   await JournalLineModel.insertMany(
     resolved.map((line) => ({
+      ...line,
       companyId: ctx.companyId,
       entryId,
-      accountId: line.accountId,
-      branchId: line.branchId,
-      partyId: line.partyId,
       postingDate: request.postingDate,
       debit: d128(line.debit),
       credit: d128(line.credit),
@@ -272,4 +287,104 @@ export async function createYearPeriods(ctx: RequestContext, year: number) {
     }
     throw error;
   }
+}
+
+/**
+ * Moves the year's income and expense to retained earnings. Posted on the last day of the year,
+ * so that month must still be open and every earlier one closed, or the result could change.
+ */
+export function closeFinancialYear(ctx: RequestContext, year: number) {
+  return runInTransaction(ctx, async (tx) => {
+    const from = new Date(Date.UTC(year, 0, 1));
+    const to = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+    const periods = await FinancialPeriodModel.find({
+      companyId: tx.companyId,
+      from: mongoose.trusted({ $gte: from, $lte: to }),
+    })
+      .sort({ from: 1 })
+      .session(tx.session)
+      .lean();
+    const last = periods.at(-1);
+    if (!last) throw new NotFoundError(`No periods exist for ${year}.`);
+    if (last.status !== 'OPEN' || periods.slice(0, -1).some((p) => p.status !== 'CLOSED')) {
+      throw new BusinessRuleError('Close every earlier month, and keep the last month open.');
+    }
+    const accounts = await LedgerAccountModel.find({
+      companyId: tx.companyId,
+      type: mongoose.trusted({ $in: ['INCOME', 'EXPENSE'] }),
+    })
+      .select({ _id: 1 })
+      .session(tx.session)
+      .lean();
+    const totals = await JournalLineModel.aggregate<{
+      _id: { accountId: Types.ObjectId; branchId: Types.ObjectId };
+      debit: Types.Decimal128;
+      credit: Types.Decimal128;
+    }>([
+      {
+        $match: {
+          companyId: tx.companyId,
+          accountId: { $in: accounts.map((a) => a._id) },
+          postingDate: { $gte: from, $lte: to },
+          closing: { $ne: true },
+        },
+      },
+      {
+        $group: {
+          _id: { accountId: '$accountId', branchId: '$branchId' },
+          debit: { $sum: '$debit' },
+          credit: { $sum: '$credit' },
+        },
+      },
+    ]).session(tx.session);
+
+    const lines: PostingLine[] = [];
+    const profitByBranch = new Map<string, Decimal>();
+    for (const { _id, debit, credit } of totals) {
+      const balance = dec(debit).minus(dec(credit));
+      if (balance.isZero()) continue;
+      const branch = _id.branchId.toString();
+      lines.push({
+        accountId: _id.accountId,
+        branchId: _id.branchId,
+        closing: true,
+        ...(balance.isPositive() ? { credit: balance } : { debit: balance.abs() }),
+      });
+      profitByBranch.set(branch, (profitByBranch.get(branch) ?? new Decimal(0)).minus(balance));
+    }
+    if (lines.length === 0) throw new BusinessRuleError('There is nothing to close for this year.');
+    for (const [branchId, profit] of profitByBranch) {
+      if (profit.isZero()) continue;
+      lines.push({
+        role: 'RETAINED_EARNINGS',
+        branchId,
+        closing: true,
+        ...(profit.isPositive() ? { credit: profit } : { debit: profit.abs() }),
+      });
+    }
+    let posted;
+    try {
+      posted = await postJournal(tx, {
+        postingDate: last.to,
+        branchId: [...profitByBranch.keys()][0] as string,
+        memo: `Year-end closing ${year}`,
+        sourceType: 'YEAR_END',
+        sourceId: String(year),
+        kind: 'YEAR_END',
+        lines,
+      });
+    } catch (error) {
+      if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
+        throw new ConflictError(`${year} has already been closed.`);
+      }
+      throw error;
+    }
+    await recordAudit(tx, {
+      action: 'period.year_end',
+      entityType: 'period',
+      entityId: String(year),
+      after: { journal: posted.number },
+    });
+    return { number: posted.number };
+  });
 }

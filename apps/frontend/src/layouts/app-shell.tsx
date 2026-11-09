@@ -19,11 +19,14 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { useTheme } from '@/contexts/theme-context';
+import { apiGet } from '@/lib/api-client';
 import { NotificationBell } from '@/features/notifications/notifications';
 import { cn } from '@/lib/utils';
 
@@ -59,6 +62,8 @@ const NAV: NavGroup[] = [
     icon: ShoppingCart,
     items: [
       { to: '/purchases', label: 'Purchase invoices', permission: 'purchase:read' },
+      { to: '/purchase-orders', label: 'Purchase orders', permission: 'purchase:read' },
+      { to: '/goods-receipts', label: 'Goods receipts', permission: 'purchase:read' },
       { to: '/suppliers', label: 'Suppliers', permission: 'party:read' },
     ],
   },
@@ -70,6 +75,9 @@ const NAV: NavGroup[] = [
       { to: '/stock/adjustments', label: 'Adjustments', permission: 'stock:read' },
       { to: '/stock/transfers', label: 'Transfers', permission: 'stock:read' },
       { to: '/stock/movements', label: 'Movements', permission: 'stock:read' },
+      { to: '/stock/reservations', label: 'Reservations', permission: 'stock:read' },
+      { to: '/stock/counts', label: 'Physical counts', permission: 'stock:read' },
+      { to: '/stock/labels', label: 'Barcode labels', permission: 'stock:read' },
       { to: '/products', label: 'Products', permission: 'product:read' },
     ],
   },
@@ -86,6 +94,7 @@ const NAV: NavGroup[] = [
     icon: Wallet,
     items: [
       { to: '/payments', label: 'Payments', permission: 'payment:read' },
+      { to: '/cash-book', label: 'Cash book', permission: 'payment:read' },
       { to: '/accounts', label: 'Cash and bank', permission: 'financial_account:read' },
       { to: '/payment-methods', label: 'Methods', permission: 'payment_method:read' },
       {
@@ -110,7 +119,10 @@ const NAV: NavGroup[] = [
   {
     label: 'Reports',
     icon: BarChart3,
-    items: [{ to: '/reports', label: 'Reports', permission: 'report:read' }],
+    items: [
+      { to: '/reports', label: 'Reports', permission: 'report:read' },
+      { to: '/party-statements', label: 'Party statements', permission: 'report:read' },
+    ],
   },
   {
     label: 'Compliance',
@@ -204,6 +216,31 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+function CompanySwitcher() {
+  const { user, switchCompany } = useAuth();
+  const companies = useQuery({
+    queryKey: ['my-companies'],
+    queryFn: () => apiGet<{ id: string; name: string }[]>('/auth/companies'),
+  });
+  if ((companies.data?.length ?? 0) < 2) return null;
+  return (
+    <select
+      aria-label="Company"
+      className="h-9 max-w-48 rounded-md border bg-card px-2 text-sm"
+      value={user?.companyId ?? ''}
+      onChange={(event) => {
+        switchCompany(event.target.value).catch((error: Error) => toast.error(error.message));
+      }}
+    >
+      {companies.data?.map((company) => (
+        <option key={company.id} value={company.id}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function AppShell() {
   const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
@@ -250,6 +287,7 @@ export function AppShell() {
           </Button>
           <div className="ms-auto flex items-center gap-2">
             <span className="hidden text-sm text-muted-foreground sm:inline">{user?.name}</span>
+            <CompanySwitcher />
             <NotificationBell />
             <Button
               variant="ghost"

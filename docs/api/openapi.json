@@ -86,6 +86,31 @@
         }
       }
     },
+    "/api/v1/auth/companies": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "GET /auth/companies",
+        "description": "Authentication: bearer token. Permissions: none.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/forgot-password": {
       "post": {
         "tags": [
@@ -537,6 +562,51 @@
         }
       }
     },
+    "/api/v1/auth/switch-company": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/switch-company",
+        "description": "Authentication: bearer token. Permissions: none.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "companyId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  }
+                },
+                "required": [
+                  "companyId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/bank-reconciliations": {
       "get": {
         "tags": [
@@ -828,6 +898,61 @@
                 },
                 "required": [
                   "paymentIds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bank-statement-lines/{id}/net": {
+      "post": {
+        "tags": [
+          "bank-statement-lines"
+        ],
+        "summary": "POST /bank-statement-lines/:id/net",
+        "description": "Authentication: bearer token. Permissions: bank_reconciliation:manage.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "otherLineId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  }
+                },
+                "required": [
+                  "otherLineId"
                 ],
                 "additionalProperties": false
               }
@@ -1169,6 +1294,31 @@
             }
           }
         },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/cash-book": {
+      "get": {
+        "tags": [
+          "cash-book"
+        ],
+        "summary": "GET /cash-book",
+        "description": "Authentication: bearer token. Permissions: payment:read.",
+        "parameters": [],
         "responses": {
           "2XX": {
             "description": "Success"
@@ -3217,6 +3367,148 @@
         }
       }
     },
+    "/api/v1/goods-receipts": {
+      "get": {
+        "tags": [
+          "goods-receipts"
+        ],
+        "summary": "GET /goods-receipts",
+        "description": "Authentication: bearer token. Permissions: purchase:read.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "goods-receipts"
+        ],
+        "summary": "POST /goods-receipts",
+        "description": "Authentication: bearer token. Permissions: purchase:create.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "partyId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "branchId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "receiptDate": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "purchaseOrderId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "productId": {
+                          "type": "string",
+                          "pattern": "^[a-f\\d]{24}$"
+                        },
+                        "warehouseId": {
+                          "type": "string",
+                          "pattern": "^[a-f\\d]{24}$"
+                        },
+                        "location": {
+                          "default": "MAIN",
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "pieces": {
+                          "default": 1,
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "grossWeight": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        },
+                        "stoneWeight": {
+                          "default": "0",
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        },
+                        "expectedWeight": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        },
+                        "cost": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        },
+                        "tag": {
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      },
+                      "required": [
+                        "productId",
+                        "warehouseId",
+                        "grossWeight",
+                        "cost"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "partyId",
+                  "branchId",
+                  "receiptDate",
+                  "lines"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/integrity-runs": {
       "get": {
         "tags": [
@@ -3340,6 +3632,19 @@
                         "partyId": {
                           "type": "string",
                           "pattern": "^[a-f\\d]{24}$"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 3
+                        },
+                        "foreignAmount": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        },
+                        "exchangeRate": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
                         }
                       },
                       "required": [
@@ -4683,6 +4988,41 @@
         }
       }
     },
+    "/api/v1/party-statements/{id}": {
+      "get": {
+        "tags": [
+          "party-statements"
+        ],
+        "summary": "GET /party-statements/:id",
+        "description": "Authentication: bearer token. Permissions: party:read, report:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/payment-methods": {
       "get": {
         "tags": [
@@ -5290,6 +5630,52 @@
         }
       }
     },
+    "/api/v1/periods/year-end": {
+      "post": {
+        "tags": [
+          "periods"
+        ],
+        "summary": "POST /periods/year-end",
+        "description": "Authentication: bearer token. Permissions: period:close.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "year": {
+                    "type": "integer",
+                    "minimum": 2000,
+                    "maximum": 2100
+                  }
+                },
+                "required": [
+                  "year"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/companies": {
       "get": {
         "tags": [
@@ -5783,6 +6169,10 @@
                     "type": "string",
                     "maxLength": 1000
                   },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
                   "currency": {
                     "type": "string",
                     "minLength": 3,
@@ -6085,6 +6475,10 @@
                     "type": "string",
                     "maxLength": 1000
                   },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
                   "currency": {
                     "type": "string",
                     "minLength": 3,
@@ -6377,6 +6771,103 @@
         }
       }
     },
+    "/api/v1/purchase-invoices/{id}/credit-notes/{noteId}/pdf": {
+      "get": {
+        "tags": [
+          "purchase-invoices"
+        ],
+        "summary": "GET /purchase-invoices/:id/credit-notes/:noteId/pdf",
+        "description": "Authentication: bearer token. Permissions: purchase:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          },
+          {
+            "name": "noteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-invoices/{id}/email": {
+      "post": {
+        "tags": [
+          "purchase-invoices"
+        ],
+        "summary": "POST /purchase-invoices/:id/email",
+        "description": "Authentication: bearer token. Permissions: purchase:export.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/purchase-invoices/{id}/pdf": {
       "get": {
         "tags": [
@@ -6508,11 +6999,33 @@
                 "type": "object",
                 "properties": {
                   "lineIds": {
-                    "minItems": 1,
+                    "default": [],
                     "type": "array",
                     "items": {
                       "type": "string",
                       "minLength": 1
+                    }
+                  },
+                  "partial": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "lineId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "grossWeight": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        }
+                      },
+                      "required": [
+                        "lineId",
+                        "grossWeight"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "reason": {
@@ -6527,7 +7040,6 @@
                   }
                 },
                 "required": [
-                  "lineIds",
                   "reason",
                   "docDate"
                 ],
@@ -6659,6 +7171,10 @@
                   "supplierInvoiceNo": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
                   },
                   "currency": {
                     "type": "string",
@@ -7191,6 +7707,138 @@
             }
           }
         },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/report-schedules": {
+      "get": {
+        "tags": [
+          "report-schedules"
+        ],
+        "summary": "GET /report-schedules",
+        "description": "Authentication: bearer token. Permissions: report:export.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "report-schedules"
+        ],
+        "summary": "POST /report-schedules",
+        "description": "Authentication: bearer token. Permissions: report:export.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "reportKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "frequency": {
+                    "type": "string",
+                    "enum": [
+                      "DAILY",
+                      "WEEKLY",
+                      "MONTHLY"
+                    ]
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "XLSX",
+                      "PDF"
+                    ]
+                  },
+                  "recipients": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    }
+                  }
+                },
+                "required": [
+                  "reportKey",
+                  "frequency",
+                  "format",
+                  "recipients"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/report-schedules/{id}": {
+      "delete": {
+        "tags": [
+          "report-schedules"
+        ],
+        "summary": "DELETE /report-schedules/:id",
+        "description": "Authentication: bearer token. Permissions: report:export.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
         "responses": {
           "2XX": {
             "description": "Success"
@@ -7758,6 +8406,10 @@
                     "type": "string",
                     "maxLength": 1000
                   },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
                   "currency": {
                     "type": "string",
                     "minLength": 3,
@@ -8060,6 +8712,10 @@
                     "type": "string",
                     "maxLength": 1000
                   },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
                   "currency": {
                     "type": "string",
                     "minLength": 3,
@@ -8352,6 +9008,103 @@
         }
       }
     },
+    "/api/v1/sales-invoices/{id}/credit-notes/{noteId}/pdf": {
+      "get": {
+        "tags": [
+          "sales-invoices"
+        ],
+        "summary": "GET /sales-invoices/:id/credit-notes/:noteId/pdf",
+        "description": "Authentication: bearer token. Permissions: sale:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          },
+          {
+            "name": "noteId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sales-invoices/{id}/email": {
+      "post": {
+        "tags": [
+          "sales-invoices"
+        ],
+        "summary": "POST /sales-invoices/:id/email",
+        "description": "Authentication: bearer token. Permissions: sale:export.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sales-invoices/{id}/pdf": {
       "get": {
         "tags": [
@@ -8483,11 +9236,33 @@
                 "type": "object",
                 "properties": {
                   "lineIds": {
-                    "minItems": 1,
+                    "default": [],
                     "type": "array",
                     "items": {
                       "type": "string",
                       "minLength": 1
+                    }
+                  },
+                  "partial": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "lineId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "grossWeight": {
+                          "type": "string",
+                          "pattern": "^-?\\d+(\\.\\d+)?$"
+                        }
+                      },
+                      "required": [
+                        "lineId",
+                        "grossWeight"
+                      ],
+                      "additionalProperties": false
                     }
                   },
                   "reason": {
@@ -8502,7 +9277,6 @@
                   }
                 },
                 "required": [
-                  "lineIds",
                   "reason",
                   "docDate"
                 ],
@@ -8634,6 +9408,10 @@
                   "supplierInvoiceNo": {
                     "type": "string",
                     "maxLength": 1000
+                  },
+                  "goodsReceiptId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
                   },
                   "currency": {
                     "type": "string",

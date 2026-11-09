@@ -23,6 +23,7 @@ let b: Tenant;
 /** Routes whose id is listed somewhere other than their own collection path. */
 const LIST_FOR: [RegExp, string][] = [
   [/^\/sanctions\/parties\//, '/parties'],
+  [/^\/party-statements\//, '/parties'],
   [/^\/statements\/general-ledger\//, '/ledger-accounts'],
   [/^\/e-invoices\/sales\//, '/sales-invoices'],
   [/^\/journals\//, '/journals'],
@@ -46,6 +47,7 @@ const BODIES: Record<string, () => object> = {
     memo: 'x',
   }),
   'POST /bank-statement-lines/:id/match': () => ({ paymentIds: [a.bank] }),
+  'POST /bank-statement-lines/:id/net': () => ({ otherLineId: a.bank }),
   'POST /compliance-cases/:id/decision': () => ({ status: 'CLEARED', decisionNote: 'x' }),
   'POST /goaml-reports/:id/submitted': () => ({ fiuReference: 'x' }),
   'POST /journals/:id/reverse': () => ({ reason: 'x' }),
@@ -81,7 +83,7 @@ async function firstId(list: string): Promise<string> {
 
 function send(route: RouteInfo, id: string) {
   const method = route.method as 'get' | 'post' | 'put' | 'patch' | 'delete';
-  const path = api(short(route).replace(':id', id));
+  const path = api(short(route).replace(/:(id|noteId)/g, id));
   const pending = request(app)[method](path).set(auth(b.token)).set(idem());
   if (method === 'get' || method === 'delete') return pending;
   return pending.send(BODIES[key(route)]?.() ?? {});
@@ -222,6 +224,13 @@ beforeAll(async () => {
   for (const party of parties.body.data as { id: string }[]) {
     await post(`/sanctions/parties/${party.id}/screen`);
   }
+  const reports = await request(app).get(api('/reports')).set(auth(a.token));
+  await post('/report-schedules', {
+    reportKey: reports.body.data[0].key,
+    frequency: 'DAILY',
+    format: 'XLSX',
+    recipients: ['x@example.com'],
+  });
   await postRaw(
     '/documents',
     { ownerType: 'PARTY', ownerId: a.customer, category: 'OTHER', fileName: 'a.pdf' },

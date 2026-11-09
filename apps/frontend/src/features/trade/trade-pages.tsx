@@ -353,6 +353,12 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
   const [docDate, setDocDate] = useState(new Date().toISOString().slice(0, 10));
   const [currency, setCurrency] = useState('AED');
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
+  const [goodsReceiptId, setGoodsReceiptId] = useState('');
+  const receipts = useQuery({
+    queryKey: ['goods-receipts', 'RECEIVED'],
+    queryFn: () => apiGet<Row[]>('/goods-receipts', { status: 'RECEIVED' }),
+    enabled: mode === 'purchase',
+  });
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
   const [payAmount, setPayAmount] = useState('');
   const [payAccount, setPayAccount] = useState('');
@@ -366,6 +372,7 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
       docDate,
       currency,
       ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
+      ...(goodsReceiptId ? { goodsReceiptId } : {}),
       lines: toPayload(lines),
       payments:
         payAmount && payAccount && payMethod
@@ -379,6 +386,7 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
       docDate,
       currency,
       supplierInvoiceNo,
+      goodsReceiptId,
       lines,
       payAmount,
       payAccount,
@@ -441,6 +449,18 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
               value={supplierInvoiceNo}
               onChange={(e) => setSupplierInvoiceNo(e.target.value)}
             />
+          </Field>
+        )}
+        {mode === 'purchase' && (receipts.data?.length ?? 0) > 0 && (
+          <Field label="Goods receipt (optional)">
+            <Select value={goodsReceiptId} onChange={(e) => setGoodsReceiptId(e.target.value)}>
+              <option value="">None</option>
+              {receipts.data?.map((receipt) => (
+                <option key={receipt.id} value={receipt.id}>
+                  {receipt.number as string}
+                </option>
+              ))}
+            </Select>
           </Field>
         )}
       </Card>
@@ -557,6 +577,11 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
   });
 
   const doc = query.data;
+  const creditNotes = useQuery({
+    queryKey: [config.path, id, 'credit-notes'],
+    queryFn: () => apiGet<Row[]>(`${config.path}/${id}/credit-notes`),
+    enabled: Boolean(doc?.number),
+  });
   const perm = (action: string) => can(`${config.permission}:${action}`);
   const button = (
     label: string,
@@ -603,6 +628,20 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
                   }}
                 >
                   Post
+                </Button>
+              )}
+              {doc.number && perm('export') && (
+                <Button
+                  variant="outline"
+                  disabled={act.isPending}
+                  onClick={() => {
+                    const to = window.prompt('Send to (leave empty for the address on file)', '');
+                    if (to !== null) {
+                      act.mutate({ path: 'email', body: to ? { to } : {} });
+                    }
+                  }}
+                >
+                  Email
                 </Button>
               )}
               {doc.number && (
@@ -677,6 +716,36 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
               },
               { header: 'Total', numeric: true, render: (l) => formatDecimal(l.lineTotal) },
               { header: 'Returned', render: (l) => (l.returned ? 'Yes' : '') },
+              {
+                header: '',
+                render: (l) =>
+                  ['POSTED', 'PARTIALLY_RETURNED'].includes(doc.status) &&
+                  !l.returned &&
+                  !l.tag &&
+                  perm('reverse') ? (
+                    <Button
+                      variant="ghost"
+                      className="print:hidden"
+                      onClick={() => {
+                        const grossWeight = window.prompt('Gross weight to return (g)');
+                        const reason = grossWeight && window.prompt('Reason for the return');
+                        if (grossWeight && reason) {
+                          act.mutate({
+                            path: 'returns',
+                            command: true,
+                            body: {
+                              partial: [{ lineId: l.lineId, grossWeight }],
+                              reason,
+                              docDate: new Date().toISOString().slice(0, 10),
+                            },
+                          });
+                        }
+                      }}
+                    >
+                      Return part
+                    </Button>
+                  ) : null,
+              },
             ]}
           />
 
@@ -705,6 +774,34 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
             <Totals doc={doc} />
           </Card>
           <div className="print:hidden space-y-4">
+            {creditNotes.data && creditNotes.data.length > 0 && (
+              <Table
+                rows={creditNotes.data}
+                columns={[
+                  { header: 'Credit note', render: (n) => n.number as string },
+                  { header: 'Date', render: (n) => (n.docDate as string).slice(0, 10) },
+                  { header: 'Reason', render: (n) => n.reason as string },
+                  {
+                    header: 'Total',
+                    numeric: true,
+                    render: (n) => formatDecimal(n.total as string),
+                  },
+                ]}
+                actions={(n) => (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      downloadFile(
+                        `${config.path}/${id}/credit-notes/${n.id}/pdf`,
+                        `${n.number as string}.pdf`,
+                      ).catch((error: Error) => toast.error(error.message));
+                    }}
+                  >
+                    PDF
+                  </Button>
+                )}
+              />
+            )}
             {mode === 'sale' && doc.number && can('einvoice:read') && (
               <EInvoiceStatus saleId={id} number={doc.number} />
             )}

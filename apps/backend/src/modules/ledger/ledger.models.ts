@@ -22,6 +22,7 @@ export const LEDGER_ROLES = [
   'OPENING_EQUITY',
   'RETAINED_EARNINGS',
   'INTER_BRANCH',
+  'GRNI',
 ] as const;
 export type LedgerRole = (typeof LEDGER_ROLES)[number];
 
@@ -102,6 +103,11 @@ const journalLineSchema = tenantSchema(
     postingDate: { type: Date, required: true },
     debit: RD128,
     credit: RD128,
+    // Moves the year's profit to retained earnings, so it is not itself part of that profit.
+    closing: Boolean,
+    currency: String,
+    foreignAmount: D128,
+    exchangeRate: D128,
   },
   { appendOnly: true },
 );
@@ -118,7 +124,18 @@ const journalDraftSchema = tenantSchema(
     memo: RS,
     branchId: ROID,
     lines: {
-      type: [{ _id: false, accountId: ROID, debit: D128, credit: D128, partyId: OID }],
+      type: [
+        {
+          _id: false,
+          accountId: ROID,
+          debit: D128,
+          credit: D128,
+          partyId: OID,
+          currency: String,
+          foreignAmount: D128,
+          exchangeRate: D128,
+        },
+      ],
       required: true,
     },
     status: { type: String, enum: ['DRAFT', 'POSTED', 'REJECTED'], required: true },

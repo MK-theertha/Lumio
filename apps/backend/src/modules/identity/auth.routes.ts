@@ -10,6 +10,7 @@ import {
   mfaLoginSchema,
   objectIdSchema,
   resetPasswordSchema,
+  switchCompanySchema,
   updateUserSchema,
 } from '@lumio/validation';
 import { Router, type Request, type RequestHandler, type Response } from 'express';
@@ -39,9 +40,11 @@ import {
   confirmMfaEnrolment,
   describeUser,
   disableMfa,
+  listUserCompanies,
   login,
   refresh,
   revokeSessionByToken,
+  switchCompany,
   type LoginOutcome,
 } from './auth.service.js';
 
@@ -176,6 +179,15 @@ export function createAuthRouter(deps: {
       body.newPassword,
     );
     sendSuccess(req, res, { done: true });
+  });
+
+  router.get('/companies', async (req, res) => {
+    sendSuccess(req, res, await listUserCompanies(req.auth.userId));
+  });
+
+  router.post('/switch-company', validate({ body: switchCompanySchema }), async (req, res) => {
+    const { companyId } = validated<{ companyId: string }>(req);
+    sendSuccess(req, res, await switchCompany(req.auth, companyId));
   });
 
   router.post('/mfa/enrol', async (req, res) => {

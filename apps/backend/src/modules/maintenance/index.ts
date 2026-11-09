@@ -18,6 +18,7 @@ import {
 import { ProductModel } from '../master/index.js';
 import { notify } from '../notifications/index.js';
 import { CompanyModel } from '../organisation/index.js';
+import { runDueSchedules, type ReportEmail } from '../reporting/index.js';
 import { sealAuditLog } from './audit-seal.js';
 import { IntegrityRunModel, runIntegrityChecks } from './integrity.js';
 
@@ -160,7 +161,11 @@ export async function refreshUnSanctionsList(
 }
 
 /** One failure must not stop the other jobs, or the other companies. */
-export async function runNightlyMaintenance(logger: Logger, store: ObjectStore): Promise<void> {
+export async function runNightlyMaintenance(
+  logger: Logger,
+  store: ObjectStore,
+  sendReport?: (email: ReportEmail) => Promise<unknown>,
+): Promise<void> {
   const companies = (await CompanyModel.find({ status: 'ACTIVE' }).select({ _id: 1 }).lean()).map(
     (c) => c._id,
   );
@@ -186,6 +191,9 @@ export async function runNightlyMaintenance(logger: Logger, store: ObjectStore):
     await attempt('documents', companyId, () => raiseDocumentReminders(companyId));
     await attempt('stock', companyId, () => raiseStockAlerts(companyId));
     await attempt('payments', companyId, () => raisePaymentAlerts(companyId));
+    if (sendReport) {
+      await attempt('reports', companyId, () => runDueSchedules(companyId, sendReport));
+    }
     await attempt('seal', companyId, () => sealAuditLog(companyId, store));
     await attempt('integrity', companyId, async () => {
       const run = await runIntegrityChecks(companyId, store);

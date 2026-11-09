@@ -11,7 +11,6 @@ import '../../modules/identity/identity.models.js';
 import '../../modules/maintenance/index.js';
 import '../../modules/notifications/index.js';
 import '../../modules/inventory/inventory.models.js';
-import '../../modules/ledger/ledger.models.js';
 import '../../modules/master/index.js';
 import '../../modules/organisation/organisation.models.js';
 import '../../modules/platform/audit/index.js';
@@ -22,6 +21,7 @@ import '../../modules/pricing/index.js';
 import '../../modules/tax/index.js';
 import '../../modules/trade/trade.models.js';
 import { RoleModel } from '../../modules/access/index.js';
+import { LedgerAccountModel } from '../../modules/ledger/index.js';
 import { CompanyModel } from '../../modules/organisation/index.js';
 import type { Migration } from './runner.js';
 
@@ -63,6 +63,24 @@ async function replaceSanctionsMatchIndex(): Promise<void> {
   await createCollectionsAndIndexes();
 }
 
+async function addGoodsReceivedAccount(): Promise<void> {
+  await createCollectionsAndIndexes();
+  const companies = await CompanyModel.find().select({ _id: 1 }).lean();
+  for (const company of companies) {
+    await LedgerAccountModel.updateOne(
+      { companyId: company._id, systemRole: 'GRNI' },
+      {
+        $setOnInsert: {
+          code: '2050',
+          name: 'Goods received not invoiced',
+          type: 'LIABILITY',
+        },
+      },
+      { upsert: true },
+    );
+  }
+}
+
 /** Append only. Never edit a migration that has shipped. */
 export const migrations: Migration[] = [
   { id: '001-kernel-indexes', up: createCollectionsAndIndexes },
@@ -70,4 +88,5 @@ export const migrations: Migration[] = [
   { id: '003-documents-sanctions-goaml-einvoice-bank', up: createCollectionsAndIndexes },
   { id: '004-new-role-permissions', up: addComplianceDocumentAndBankPermissions },
   { id: '005-sanctions-subject-and-maintenance', up: replaceSanctionsMatchIndex },
+  { id: '006-goods-receipts', up: addGoodsReceivedAccount },
 ];

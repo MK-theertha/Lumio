@@ -207,10 +207,16 @@ export const journalDraftSchema = z.strictObject({
         debit: decimalNonNegative.default('0'),
         credit: decimalNonNegative.default('0'),
         partyId: id.optional(),
+        // Optional foreign currency detail. Debit and credit are always in the base currency.
+        currency: z.string().length(3).toUpperCase().optional(),
+        foreignAmount: decimalNonNegative.optional(),
+        exchangeRate: decimalNonNegative.optional(),
       }),
     )
     .min(2),
 });
+export const yearEndSchema = z.strictObject({ year: z.number().int().min(2000).max(2100) });
+export const bankLineNetSchema = z.strictObject({ otherLineId: id });
 export const reasonSchema = z.strictObject({ reason: text });
 export const periodYearSchema = z.strictObject({ year: z.number().int().min(2000).max(2100) });
 
@@ -350,16 +356,24 @@ export const tradeDocumentSchema = z.strictObject({
   docDate: z.iso.date(),
   dueDate: z.iso.date().optional(),
   supplierInvoiceNo: optionalText,
+  goodsReceiptId: id.optional(),
   currency: z.string().length(3),
   lines: z.array(tradeLine).min(1).max(500),
   payments: z.array(settlement).default([]),
   notes: optionalText,
 });
-export const tradeReturnSchema = z.strictObject({
-  lineIds: z.array(z.string().min(1)).min(1),
-  reason: text,
-  docDate: z.iso.date(),
-});
+export const tradeReturnSchema = z
+  .strictObject({
+    lineIds: z.array(z.string().min(1)).default([]),
+    /** Part of a line's weight. The rest of the line stays on the invoice. */
+    partial: z
+      .array(z.strictObject({ lineId: z.string().min(1), grossWeight: decimalNonNegative }))
+      .default([]),
+    reason: text,
+    docDate: z.iso.date(),
+  })
+  .refine((v) => v.lineIds.length + v.partial.length > 0, 'Choose something to return');
+export const invoiceEmailSchema = z.strictObject({ to: z.email().optional() });
 export const purchaseOrderSchema = z.strictObject({
   partyId: id,
   branchId: id,
@@ -485,3 +499,34 @@ export const clientErrorSchema = z.strictObject({
   componentStack: z.string().max(10_000).optional(),
   path: z.string().max(500).optional(),
 });
+
+/* Goods receipts */
+export const goodsReceiptSchema = z.strictObject({
+  partyId: id,
+  branchId: id,
+  receiptDate: z.iso.date(),
+  purchaseOrderId: id.optional(),
+  lines: z
+    .array(
+      z.strictObject({
+        productId: id,
+        warehouseId: id,
+        location,
+        ...quantities,
+        expectedWeight: decimalNonNegative.optional(),
+        cost: decimalNonNegative,
+        tag: optionalText,
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/* Report schedules */
+export const reportScheduleSchema = z.strictObject({
+  reportKey: code,
+  frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY']),
+  format: z.enum(['XLSX', 'PDF']),
+  recipients: z.array(z.email()).min(1).max(20),
+});
+export const switchCompanySchema = z.strictObject({ companyId: id });

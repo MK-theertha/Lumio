@@ -18,6 +18,7 @@ import {
 import { createDocumentRouter } from '../modules/documents/index.js';
 import { createEInvoiceRouter } from '../modules/einvoice/index.js';
 import {
+  assertBankLinesExplained,
   createBankReconciliationRouter,
   FinancialAccountModel,
   OpenItemModel,
@@ -35,6 +36,7 @@ import { createAuthRouter, createUsersRouter, UserModel } from '../modules/ident
 import * as inventory from '../modules/inventory/index.js';
 import {
   beginPeriodClose,
+  closeFinancialYear,
   completePeriodClose,
   createYearPeriods,
   FinancialPeriodModel,
@@ -64,11 +66,15 @@ import { AuditLogModel, recordAudit } from '../modules/platform/audit/index.js';
 import { crudRouter } from '../modules/platform/crud/index.js';
 import { executeIdempotent } from '../modules/platform/idempotency/index.js';
 import { createGoldRateRouter } from '../modules/pricing/index.js';
-import { createReportingRouter } from '../modules/reporting/index.js';
+import { createReportingRouter, createReportScheduleRouter } from '../modules/reporting/index.js';
 import { TaxCodeModel, TaxRuleModel } from '../modules/tax/index.js';
-import { createTradeRouter, PurchaseOrderModel } from '../modules/trade/index.js';
+import {
+  createGoodsReceiptRouter,
+  createTradeRouter,
+  PurchaseOrderModel,
+} from '../modules/trade/index.js';
 import { blindIndex, encrypt } from '../shared/crypto.js';
-import { d128 } from '../shared/decimal.js';
+import { d128, dec } from '../shared/decimal.js';
 import { AppError, BusinessRuleError, ConflictError, NotFoundError } from '../shared/errors.js';
 import { sendSuccess } from '../shared/http.js';
 import { idempotencyKeyOf } from '../shared/idempotent-route.js';
@@ -564,10 +570,25 @@ function ledgerRoutes(router: Router): void {
     validate({ body: v.journalDraftSchema }),
     async (req, res) => {
       const input = body<z.infer<typeof v.journalDraftSchema>>(req);
+      for (const line of input.lines) {
+        if (line.foreignAmount === undefined) continue;
+        const base = dec(line.foreignAmount).times(dec(line.exchangeRate)).toDecimalPlaces(2);
+        if (!line.currency || !base.equals(dec(line.debit).plus(dec(line.credit)))) {
+          throw new BusinessRuleError(
+            'A foreign currency line needs a currency, and foreign amount times rate must equal its base amount.',
+          );
+        }
+      }
       const draft = await JournalDraftModel.create({
         ...input,
         postingDate: new Date(input.postingDate),
-        lines: input.lines.map((l) => ({ ...l, debit: d128(l.debit), credit: d128(l.credit) })),
+        lines: input.lines.map((l) => ({
+          ...l,
+          debit: d128(l.debit),
+          credit: d128(l.credit),
+          ...(l.foreignAmount ? { foreignAmount: d128(l.foreignAmount) } : {}),
+          ...(l.exchangeRate ? { exchangeRate: d128(l.exchangeRate) } : {}),
+        })),
         companyId: req.ctx.companyId,
         status: 'DRAFT',
         createdBy: req.ctx.userId,
@@ -603,11 +624,21 @@ function ledgerRoutes(router: Router): void {
               debit?: unknown;
               credit?: unknown;
               partyId?: mongoose.Types.ObjectId;
+              currency?: string;
+              foreignAmount?: unknown;
+              exchangeRate?: unknown;
             }) => ({
               accountId: l.accountId,
               debit: String(l.debit ?? '0'),
               credit: String(l.credit ?? '0'),
               ...(l.partyId ? { partyId: l.partyId } : {}),
+              ...(l.currency
+                ? {
+                    currency: l.currency,
+                    foreignAmount: String(l.foreignAmount),
+                    exchangeRate: String(l.exchangeRate),
+                  }
+                : {}),
             }),
           ),
         });
@@ -648,10 +679,20 @@ function ledgerRoutes(router: Router): void {
     },
   );
   router.post(
+    '/periods/year-end',
+    requirePermission('period:close'),
+    validate({ body: v.yearEndSchema }),
+    async (req, res) => {
+      const { year } = body<z.infer<typeof v.yearEndSchema>>(req);
+      sendSuccess(req, res, await closeFinancialYear(req.ctx, year), 201);
+    },
+  );
+  router.post(
     '/periods/:id/begin-close',
     requirePermission('period:close'),
     idParams,
     async (req, res) => {
+      await assertBankLinesExplained(req.ctx, id(req));
       sendSuccess(req, res, plain(await beginPeriodClose(req.ctx, id(req))));
     },
   );
@@ -756,12 +797,14 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.use('/gold-rates', createGoldRateRouter());
   router.use('/sales-invoices', createTradeRouter('SALE'));
   router.use('/purchase-invoices', createTradeRouter('PURCHASE'));
+  router.use('/goods-receipts', createGoodsReceiptRouter());
   router.use('/compliance-cases', createComplianceCaseRouter());
   router.use('/sanctions', createSanctionsRouter());
   router.use('/goaml-reports', createGoamlRouter());
   router.use('/documents', createDocumentRouter());
   router.use('/e-invoices', createEInvoiceRouter());
   router.use('/notifications', createNotificationRouter());
+  router.use('/report-schedules', createReportScheduleRouter());
   router.use('/integrity-runs', createIntegrityRouter());
   router.use(createBankReconciliationRouter());
   router.use(createReportingRouter());

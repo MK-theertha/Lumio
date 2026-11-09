@@ -33,11 +33,19 @@ import { postJournal, type PostingLine } from '../ledger/index.js';
 import { recordAudit } from '../platform/audit/index.js';
 import { allocateNumber, type NumberingScope } from '../platform/numbering/index.js';
 import { enqueueEvent } from '../platform/outbox/index.js';
+import { encrypt } from '../../shared/crypto.js';
+import { renderInvoicePdf, type PdfCompany, type PdfInvoice } from './invoice-pdf.js';
 import { assertPartyNotOnHold } from '../compliance/index.js';
-import { BranchModel } from '../organisation/index.js';
+import { PartyModel } from '../master/index.js';
+import { BranchModel, CompanyModel } from '../organisation/index.js';
 import { recordTaxTransaction } from '../tax/index.js';
 import { priceTrade, type Direction, type TradeInput } from './pricing.service.js';
-import { CreditNoteModel, PurchaseInvoiceModel, SalesInvoiceModel } from './trade.models.js';
+import {
+  CreditNoteModel,
+  GoodsReceiptModel,
+  PurchaseInvoiceModel,
+  SalesInvoiceModel,
+} from './trade.models.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- sales and purchases share one schema
 const modelOf = (direction: Direction): Model<any> =>
@@ -79,7 +87,19 @@ export interface TradeLine {
   allocations?: LotAllocation[];
 }
 
+interface ClaimedReceipt {
+  lines: {
+    productId: string;
+    grossWeight: Types.Decimal128;
+    cost: Types.Decimal128;
+    lotId?: Types.ObjectId;
+    stockItemId?: Types.ObjectId;
+  }[];
+}
+
 export interface TradeDocument {
+  goodsReceiptId?: Types.ObjectId;
+  currency: string;
   _id: Types.ObjectId;
   number?: string;
   status: string;
@@ -101,6 +121,45 @@ export interface TradeDocument {
   grandTotal: Types.Decimal128;
   createdBy: string;
   openItemId?: Types.ObjectId;
+}
+
+/** Until foreign currency accounting is agreed (question Q13), a face value would be booked as AED. */
+async function assertBaseCurrency(tx: TransactionalContext, currency: string): Promise<void> {
+  const company = await CompanyModel.findById(tx.companyId).session(tx.session).lean();
+  if (company && company.baseCurrency !== currency) {
+    throw new BusinessRuleError(
+      `Only ${company.baseCurrency} invoices can be posted until foreign currency accounting is set up.`,
+    );
+  }
+}
+
+async function claimGoodsReceipt(
+  tx: TransactionalContext,
+  doc: TradeDocument,
+  invoiceId: string,
+): Promise<ClaimedReceipt> {
+  const receipt = (await GoodsReceiptModel.findOneAndUpdate(
+    {
+      companyId: tx.companyId,
+      _id: doc.goodsReceiptId,
+      partyId: doc.partyId,
+      status: 'RECEIVED',
+    },
+    { $set: { status: 'INVOICED', invoiceId } },
+    { returnDocument: 'after', session: tx.session },
+  ).lean()) as ClaimedReceipt | null;
+  if (!receipt) throw new ConflictError('This goods receipt is not available to invoice.');
+  const matches =
+    receipt.lines.length === doc.lines.length &&
+    receipt.lines.every((received, index) => {
+      const line = doc.lines[index] as TradeLine;
+      return (
+        String(received.productId) === String(line.productId) &&
+        dec(received.grossWeight).equals(dec(line.grossWeight))
+      );
+    });
+  if (!matches) throw new BusinessRuleError('The invoice lines do not match the goods receipt.');
+  return receipt;
 }
 
 async function load(ctx: RequestContext, direction: Direction, id: string): Promise<TradeDocument> {
@@ -132,6 +191,7 @@ async function priced(ctx: RequestContext, direction: Direction, input: TradeInp
     docDate: new Date(input.docDate),
     ...(input.dueDate ? { dueDate: new Date(input.dueDate) } : {}),
     ...(input.supplierInvoiceNo ? { supplierInvoiceNo: input.supplierInvoiceNo } : {}),
+    ...(input.goodsReceiptId ? { goodsReceiptId: input.goodsReceiptId } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
     lines,
     plannedPayments: input.payments,
@@ -288,6 +348,7 @@ async function moveStock(
   direction: Direction,
   doc: TradeDocument,
   company: Awaited<ReturnType<typeof stockPolicy>>,
+  receipt: ClaimedReceipt | null,
 ): Promise<{ lines: TradeLine[]; cost: Decimal }> {
   const moneyScale = company.settings?.pricing?.moneyScale ?? 2;
   const sourceType = direction === 'SALE' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE';
@@ -295,7 +356,19 @@ async function moveStock(
   const lines: TradeLine[] = [];
   let cost = new Decimal(0);
 
-  for (const line of doc.lines) {
+  for (const [index, line] of doc.lines.entries()) {
+    const alreadyReceived = receipt?.lines[index];
+    if (alreadyReceived) {
+      // The goods came into stock at receipt. The invoice only settles the accrual.
+      cost = cost.plus(dec(alreadyReceived.cost));
+      lines.push({
+        ...line,
+        costAtIssue: alreadyReceived.cost,
+        ...(alreadyReceived.lotId ? { lotId: alreadyReceived.lotId } : {}),
+        ...(alreadyReceived.stockItemId ? { stockItemId: alreadyReceived.stockItemId } : {}),
+      });
+      continue;
+    }
     const key = {
       branchId: doc.branchId,
       warehouseId: line.warehouseId,
@@ -356,14 +429,24 @@ function journalLines(
   doc: TradeDocument,
   cost: Decimal,
   notionalTax: Decimal,
+  fromGoodsReceipt = false,
 ): PostingLine[] {
   const total = dec(doc.grandTotal);
   const taxable = dec(doc.taxableTotal);
   const tax = dec(doc.taxTotal);
   const partyId = doc.partyId;
   if (direction === 'PURCHASE') {
+    const difference = taxable.minus(cost);
     return [
-      { role: 'INVENTORY', debit: taxable },
+      ...(fromGoodsReceipt
+        ? [
+            { role: 'GRNI' as const, debit: cost },
+            // Stock stays at the cost it was received at, so a price difference is a gain or loss.
+            difference.isNegative()
+              ? { role: 'STOCK_GAIN_LOSS' as const, credit: difference.negated() }
+              : { role: 'STOCK_GAIN_LOSS' as const, debit: difference },
+          ]
+        : [{ role: 'INVENTORY' as const, debit: taxable }]),
       { role: 'INPUT_VAT', debit: tax.plus(notionalTax) },
       { role: 'OUTPUT_VAT', credit: notionalTax },
       { role: 'AP', credit: total, partyId },
@@ -406,9 +489,11 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
       throw new ConflictError('This document cannot be posted in its current state.');
     }
     await assertPartyNotOnHold(tx, doc.partyId);
+    await assertBaseCurrency(tx, doc.currency);
     const label = LABEL[direction];
     const number = await nextNumber(tx, company, label.series, doc.branchId, doc.docDate);
-    const { lines, cost } = await moveStock(tx, direction, doc, company);
+    const receipt = doc.goodsReceiptId ? await claimGoodsReceipt(tx, doc, id) : null;
+    const { lines, cost } = await moveStock(tx, direction, doc, company, receipt);
     const notionalTax = lines.reduce((sum, l) => sum.plus(dec(l.notionalTax)), new Decimal(0));
 
     const journal = await postJournal(tx, {
@@ -418,7 +503,7 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
       sourceType: direction === 'SALE' ? 'SALES_INVOICE' : 'PURCHASE_INVOICE',
       sourceId: id,
       kind: 'POSTING',
-      lines: journalLines(direction, { ...doc, lines }, cost, notionalTax),
+      lines: journalLines(direction, { ...doc, lines }, cost, notionalTax, receipt !== null),
     });
 
     for (const group of taxGroups({ ...doc, lines })) {
@@ -508,7 +593,83 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
   });
 }
 
-/** Returns whole lines at their original snapshot values, issuing a credit note. */
+const WEIGHT_FIELDS = ['grossWeight', 'stoneWeight', 'netWeight', 'fineWeight'] as const;
+const VALUE_FIELDS = [
+  'goldValue',
+  'wastageValue',
+  'makingCharge',
+  'discount',
+  'taxableValue',
+  'taxAmount',
+  'notionalTax',
+  'lineTotal',
+  'costAtIssue',
+] as const;
+const WEIGHT_SCALE = 4;
+
+/**
+ * Divides each partly returned line in two: a returned part priced pro rata, and a remainder that
+ * takes the difference. The two always add back to the original line, whatever the rounding.
+ */
+function splitForPartialReturn(
+  lines: TradeLine[],
+  partial: { lineId: string; grossWeight: string }[],
+  moneyScale: number,
+): { lines: TradeLine[]; returnIds: string[] } {
+  const output = [...lines];
+  const returnIds: string[] = [];
+  for (const { lineId, grossWeight } of partial) {
+    const index = output.findIndex((l) => l.lineId === lineId);
+    const line = output[index];
+    if (!line) throw new BusinessRuleError('A selected line does not belong to this document.');
+    if (line.returned) throw new ConflictError('A selected line has already been returned.');
+    if (line.stockItemId) throw new BusinessRuleError('A tagged piece can only be returned whole.');
+    const whole = dec(line.grossWeight);
+    const ratio = dec(grossWeight).dividedBy(whole);
+    if (ratio.lessThanOrEqualTo(0) || ratio.greaterThanOrEqualTo(1)) {
+      throw new BusinessRuleError(
+        'A partial return must be more than zero and less than the line.',
+      );
+    }
+    const returned: Record<string, unknown> = {};
+    const remaining: Record<string, unknown> = {};
+    const divide = (field: string, scale: number) => {
+      const value = line[field as keyof TradeLine] as Types.Decimal128 | undefined;
+      if (value === undefined || value === null) return;
+      const part = dec(value).times(ratio).toDecimalPlaces(scale);
+      returned[field] = d128(part);
+      remaining[field] = d128(dec(value).minus(part));
+    };
+    for (const field of WEIGHT_FIELDS) divide(field, WEIGHT_SCALE);
+    for (const field of VALUE_FIELDS) divide(field, moneyScale);
+    const allocations = (line.allocations ?? []).map((part) => ({
+      ...part,
+      pieces: 0,
+      gross: dec(part.gross).times(ratio).toDecimalPlaces(WEIGHT_SCALE).toFixed(),
+      net: dec(part.net).times(ratio).toDecimalPlaces(WEIGHT_SCALE).toFixed(),
+      fine: dec(part.fine).times(ratio).toDecimalPlaces(WEIGHT_SCALE).toFixed(),
+      cost: dec(part.cost).times(ratio).toDecimalPlaces(moneyScale).toFixed(),
+    }));
+    const remainingAllocations = (line.allocations ?? []).map((part, at) => ({
+      ...part,
+      gross: dec(part.gross).minus(dec(allocations[at]?.gross)).toFixed(),
+      net: dec(part.net).minus(dec(allocations[at]?.net)).toFixed(),
+      fine: dec(part.fine).minus(dec(allocations[at]?.fine)).toFixed(),
+      cost: dec(part.cost).minus(dec(allocations[at]?.cost)).toFixed(),
+    }));
+    const returnId = `${lineId}-r${output.length}`;
+    returnIds.push(returnId);
+    output.splice(
+      index,
+      1,
+      { ...line, ...remaining, allocations: remainingAllocations } as TradeLine,
+      { ...line, ...returned, lineId: returnId, pieces: 0, allocations } as TradeLine,
+    );
+  }
+  return { lines: output, returnIds };
+}
+
+/** Returns lines at their original snapshot values, issuing a credit note. */
 export function returnLines(
   ctx: RequestContext,
   direction: Direction,
@@ -522,8 +683,11 @@ export function returnLines(
     }
     const company = await stockPolicy(tx);
     const moneyScale = company.settings?.pricing?.moneyScale ?? 2;
-    const selected = doc.lines.filter((l) => input.lineIds.includes(l.lineId));
-    if (selected.length !== new Set(input.lineIds).size) {
+    const split = splitForPartialReturn(doc.lines, input.partial, moneyScale);
+    doc.lines = split.lines;
+    const lineIds = [...input.lineIds, ...split.returnIds];
+    const selected = doc.lines.filter((l) => lineIds.includes(l.lineId));
+    if (selected.length !== new Set(lineIds).size) {
       throw new BusinessRuleError('A selected line does not belong to this document.');
     }
     if (selected.some((l) => l.returned)) {
@@ -652,7 +816,7 @@ export function returnLines(
           branchId: doc.branchId,
           docDate: date,
           reason: input.reason,
-          lineIds: input.lineIds,
+          lineIds,
           taxable: d128(taxable),
           tax: d128(tax),
           total: d128(total),
@@ -695,7 +859,7 @@ export function returnLines(
     await changePartyBalance(tx, doc.partyId, side, total.negated());
 
     const updatedLines = doc.lines.map((line) =>
-      input.lineIds.includes(line.lineId) ? { ...line, returned: true } : line,
+      lineIds.includes(line.lineId) ? { ...line, returned: true } : line,
     );
     await modelOf(direction)
       .updateOne(
@@ -714,7 +878,82 @@ export function returnLines(
       entityId: id,
       after: { creditNote: number, total: total.toFixed(), reason: input.reason },
     });
+    if (direction === 'SALE') {
+      await enqueueEvent(tx, CREDIT_NOTE_ISSUED_EVENT, { id: creditNoteId.toString(), number });
+    }
     return { id: creditNoteId.toString(), number };
+  });
+}
+
+export const INVOICE_EMAIL_EVENT = 'invoice.email';
+export const CREDIT_NOTE_ISSUED_EVENT = 'credit_note.issued';
+
+async function pdfCompany(ctx: RequestContext): Promise<PdfCompany> {
+  const company = await CompanyModel.findById(ctx.companyId).lean();
+  if (!company) throw new NotFoundError();
+  return company as unknown as PdfCompany;
+}
+
+export async function documentPdf(ctx: RequestContext, direction: Direction, id: string) {
+  const doc = plain<PdfInvoice>(await load(ctx, direction, id));
+  if (!doc.number) throw new ConflictError('Only a posted invoice can be issued as a PDF.');
+  const pdf = await renderInvoicePdf(doc, await pdfCompany(ctx), direction);
+  return { number: doc.number, pdf };
+}
+
+export async function creditNotePdf(
+  ctx: RequestContext,
+  direction: Direction,
+  id: string,
+  noteId: string,
+) {
+  const doc = plain<PdfInvoice>(await load(ctx, direction, id));
+  const note = await CreditNoteModel.findOne({
+    companyId: ctx.companyId,
+    _id: noteId,
+    originalId: id,
+  }).lean();
+  if (!note) throw new NotFoundError();
+  const pdf = await renderInvoicePdf(
+    {
+      ...doc,
+      number: note.number,
+      originalNumber: note.originalNumber,
+      docDate: note.docDate.toISOString(),
+      notes: `Reason: ${note.reason}`,
+      lines: doc.lines.filter((line) => note.lineIds.includes(line.lineId)),
+      taxableTotal: note.taxable.toString(),
+      taxTotal: note.tax.toString(),
+      discountTotal: '0',
+      grandTotal: note.total.toString(),
+    },
+    await pdfCompany(ctx),
+    'CREDIT_NOTE',
+  );
+  return { number: note.number as string, pdf };
+}
+
+/** Queues the email. The worker renders the PDF, so a slow render holds up nobody's request. */
+export function emailDocument(ctx: RequestContext, direction: Direction, id: string, to?: string) {
+  return runInTransaction(ctx, async (tx) => {
+    const doc = await load(tx, direction, id);
+    if (!doc.number) throw new ConflictError('Only a posted invoice can be emailed.');
+    const party = await PartyModel.findOne({ companyId: tx.companyId, _id: doc.partyId })
+      .session(tx.session)
+      .lean();
+    const recipient = to ?? party?.email;
+    if (!recipient) throw new BusinessRuleError('This party has no email address on file.');
+    await enqueueEvent(tx, INVOICE_EMAIL_EVENT, {
+      direction,
+      id,
+      sealedTo: encrypt(recipient),
+    });
+    await recordAudit(tx, {
+      action: `${LABEL[direction].entity}.email`,
+      entityType: LABEL[direction].entity,
+      entityId: id,
+    });
+    return { queued: true };
   });
 }
 

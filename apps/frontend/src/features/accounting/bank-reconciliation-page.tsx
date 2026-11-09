@@ -134,6 +134,50 @@ function AdjustDialog({ line, onClose }: { line: Row; onClose: () => void }) {
   );
 }
 
+/** Pairs a line with the one that cancels it, such as a returned cheque. */
+function NetDialog({ line, onClose }: { line: Row; onClose: () => void }) {
+  const send = useSend(() => 'Lines netted off', onClose);
+  const lines = useQuery({
+    queryKey: ['bank-lines', line.financialAccountId, 'UNMATCHED'],
+    queryFn: () =>
+      apiGet<Row[]>('/bank-statement-lines', {
+        financialAccountId: line.financialAccountId,
+        status: 'UNMATCHED',
+      }),
+  });
+  const opposites = lines.data?.filter(
+    (other) => Number(other.amount) === -Number(line.amount) && other.id !== line.id,
+  );
+  return (
+    <Modal title={`Net off ${formatDecimal(line.amount as string)}`} onClose={onClose}>
+      <QueryState query={lines} empty={opposites?.length === 0}>
+        <ul className="space-y-2 text-sm">
+          {opposites?.map((other) => (
+            <li key={other.id} className="flex items-center justify-between gap-2">
+              <span>
+                {(other.date as string).slice(0, 10)} {other.description as string}{' '}
+                {formatDecimal(other.amount as string)}
+              </span>
+              <Button
+                variant="outline"
+                disabled={send.isPending}
+                onClick={() =>
+                  send.mutate({
+                    path: `/bank-statement-lines/${line.id}/net`,
+                    body: { otherLineId: other.id },
+                  })
+                }
+              >
+                Net off
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </QueryState>
+    </Modal>
+  );
+}
+
 interface Summary {
   closingBalance: string;
   depositsInTransit: string;
@@ -269,6 +313,7 @@ export function BankReconciliationPage() {
   const [status, setStatus] = useState('UNMATCHED');
   const [matching, setMatching] = useState<Row | null>(null);
   const [adjusting, setAdjusting] = useState<Row | null>(null);
+  const [netting, setNetting] = useState<Row | null>(null);
   const importing = useSend(
     (r) => `${String(r.imported)} new line(s), ${String(r.duplicates)} already held`,
   );
@@ -356,6 +401,7 @@ export function BankReconciliationPage() {
             <option value="UNMATCHED">Unmatched</option>
             <option value="MATCHED">Matched</option>
             <option value="ADJUSTED">Booked</option>
+            <option value="NETTED">Netted off</option>
             <option value="">All</option>
           </Select>
         </Field>
@@ -386,6 +432,9 @@ export function BankReconciliationPage() {
                       <Button variant="outline" onClick={() => setAdjusting(r)}>
                         Book
                       </Button>
+                      <Button variant="ghost" onClick={() => setNetting(r)}>
+                        Net off
+                      </Button>
                     </>
                   )}
                   {r.status === 'MATCHED' && !r.reconciliationId && (
@@ -410,6 +459,7 @@ export function BankReconciliationPage() {
       )}
       {matching && <MatchDialog line={matching} onClose={() => setMatching(null)} />}
       {adjusting && <AdjustDialog line={adjusting} onClose={() => setAdjusting(null)} />}
+      {netting && <NetDialog line={netting} onClose={() => setNetting(null)} />}
     </div>
   );
 }

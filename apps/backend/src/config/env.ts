@@ -48,6 +48,11 @@ const envSchema = z
       .transform((value) => value || undefined),
     CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
     EINVOICE_PROVIDER: z.enum(['none', 'simulated']).default('none'),
+    // Checks new passwords against known breaches. Sends only a partial hash to the service.
+    PASSWORD_BREACH_CHECK: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     // Prometheus port for this process. Never exposed through the public proxy.
     METRICS_PORT: z.coerce.number().int().positive().optional(),
     // Where the nightly job fetches the UN list. Empty disables the refresh.

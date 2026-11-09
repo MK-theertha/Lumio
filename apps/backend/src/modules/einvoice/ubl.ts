@@ -17,6 +17,8 @@ export interface UblLine {
 }
 
 export interface UblInvoice {
+  /** Set on a credit note: the number of the invoice it corrects. */
+  creditsInvoice?: string;
   number: string;
   docDate: string;
   dueDate?: string;
@@ -95,17 +97,20 @@ function taxSubtotals(invoice: UblInvoice): string {
     .join('');
 }
 
-function invoiceLine(line: UblLine, index: number, currency: string): string {
+function invoiceLine(line: UblLine, index: number, currency: string, credit: boolean): string {
+  const [lineTag, quantityTag] = credit
+    ? ['CreditNoteLine', 'CreditedQuantity']
+    : ['InvoiceLine', 'InvoicedQuantity'];
   const net = dec(line.netWeight);
   const unitPrice = net.isZero() ? dec(line.taxableValue) : dec(line.taxableValue).dividedBy(net);
   return (
-    `<cac:InvoiceLine><cbc:ID>${index + 1}</cbc:ID>` +
-    `<cbc:InvoicedQuantity unitCode="GRM">${net.toFixed(3)}</cbc:InvoicedQuantity>` +
+    `<cac:${lineTag}><cbc:ID>${index + 1}</cbc:ID>` +
+    `<cbc:${quantityTag} unitCode="GRM">${net.toFixed(3)}</cbc:${quantityTag}>` +
     amount('LineExtensionAmount', line.taxableValue, currency) +
     `<cac:Item><cbc:Name>${esc(line.productName)}</cbc:Name>` +
     `${taxCategory('ClassifiedTaxCategory', line.taxTreatment, line.taxRatePercent)}</cac:Item>` +
     `<cac:Price><cbc:PriceAmount currencyID="${esc(currency)}">${unitPrice.toFixed(4)}</cbc:PriceAmount></cac:Price>` +
-    `</cac:InvoiceLine>`
+    `</cac:${lineTag}>`
   );
 }
 
@@ -114,10 +119,12 @@ function invoiceLine(line: UblLine, index: number, currency: string): string {
  * reading of the specification and must be confirmed with the accredited service provider.
  */
 export function renderUblInvoice(invoice: UblInvoice): string {
-  const { currency } = invoice;
+  const { currency, creditsInvoice } = invoice;
+  const credit = Boolean(creditsInvoice);
+  const root = credit ? 'CreditNote' : 'Invoice';
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"',
+    `<${root} xmlns="urn:oasis:names:specification:ubl:schema:xsd:${root}-2"`,
     ' xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"',
     ' xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">',
     '<cbc:CustomizationID>urn:peppol:pint:billing-1@ae-1</cbc:CustomizationID>',
@@ -125,8 +132,13 @@ export function renderUblInvoice(invoice: UblInvoice): string {
     `<cbc:ID>${esc(invoice.number)}</cbc:ID>`,
     `<cbc:IssueDate>${invoice.docDate.slice(0, 10)}</cbc:IssueDate>`,
     invoice.dueDate ? `<cbc:DueDate>${invoice.dueDate.slice(0, 10)}</cbc:DueDate>` : '',
-    '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>',
+    credit
+      ? '<cbc:CreditNoteTypeCode>381</cbc:CreditNoteTypeCode>'
+      : '<cbc:InvoiceTypeCode>380</cbc:InvoiceTypeCode>',
     `<cbc:DocumentCurrencyCode>${esc(currency)}</cbc:DocumentCurrencyCode>`,
+    creditsInvoice
+      ? `<cac:BillingReference><cac:InvoiceDocumentReference><cbc:ID>${esc(creditsInvoice)}</cbc:ID></cac:InvoiceDocumentReference></cac:BillingReference>`
+      : '',
     party('AccountingSupplierParty', invoice.seller),
     party('AccountingCustomerParty', invoice.buyer),
     `<cac:TaxTotal>${amount('TaxAmount', invoice.taxTotal, currency)}${taxSubtotals(invoice)}</cac:TaxTotal>`,
@@ -136,7 +148,7 @@ export function renderUblInvoice(invoice: UblInvoice): string {
     amount('TaxInclusiveAmount', invoice.grandTotal, currency),
     amount('PayableAmount', invoice.grandTotal, currency),
     '</cac:LegalMonetaryTotal>',
-    ...invoice.lines.map((line, index) => invoiceLine(line, index, currency)),
-    '</Invoice>',
+    ...invoice.lines.map((line, index) => invoiceLine(line, index, currency, credit)),
+    `</${root}>`,
   ].join('');
 }

@@ -13,8 +13,8 @@ import { plain } from '../../shared/serialize.js';
 import { PartyModel } from '../master/index.js';
 import { CompanyModel } from '../organisation/index.js';
 import { recordAudit } from '../platform/audit/index.js';
-import { SalesInvoiceModel } from '../trade/index.js';
-import { renderUblInvoice, type UblInvoice } from './ubl.js';
+import { CreditNoteModel, SalesInvoiceModel } from '../trade/index.js';
+import { renderUblInvoice, type UblInvoice, type UblLine } from './ubl.js';
 
 export { renderUblInvoice } from './ubl.js';
 
@@ -80,36 +80,58 @@ export function configuredProvider(): EInvoiceProvider | null {
   return runtime().EINVOICE_PROVIDER === 'simulated' ? simulatedProvider : null;
 }
 
+const partyOf = (p: {
+  name: string;
+  taxRegistrationNumber?: string;
+  address?: string;
+  billingAddress?: string;
+}) => ({
+  name: p.name,
+  ...(p.taxRegistrationNumber ? { taxRegistrationNumber: p.taxRegistrationNumber } : {}),
+  ...((p.address ?? p.billingAddress)
+    ? { address: (p.address ?? p.billingAddress) as string }
+    : {}),
+});
+
+type InvoiceData = UblInvoice & { partySnapshot: Record<string, string> };
+
+/** Finds a posted invoice or credit note and renders it. Both are immutable once issued. */
 async function buildXml(companyId: Types.ObjectId, id: string) {
-  const invoice = await SalesInvoiceModel.findOne({ companyId, _id: id }).lean();
-  if (!invoice?.number) throw new NotFoundError('No posted invoice was found.');
   const company = await CompanyModel.findById(companyId).lean();
   if (!company) throw new NotFoundError();
-  const data = plain<UblInvoice & { partySnapshot: Record<string, string>; partyId: string }>(
+  const seller = partyOf({ ...(company as never), name: company.legalName as string });
+  const note = await CreditNoteModel.findOne({ companyId, _id: id }).lean();
+  const invoice = await SalesInvoiceModel.findOne({
+    companyId,
+    _id: note ? note.originalId : id,
+  }).lean();
+  if (!invoice?.number) throw new NotFoundError('No posted invoice was found.');
+  const data = plain<InvoiceData & { lines: (UblLine & { lineId: string })[] }>(invoice);
+  const buyer = partyOf(data.partySnapshot as never);
+  const xml = note
+    ? renderUblInvoice({
+        ...data,
+        creditsInvoice: note.originalNumber,
+        number: note.number,
+        docDate: note.docDate.toISOString(),
+        lines: data.lines.filter((line) => note.lineIds.includes(line.lineId)),
+        taxableTotal: note.taxable.toString(),
+        taxTotal: note.tax.toString(),
+        grandTotal: note.total.toString(),
+        seller,
+        buyer,
+      })
+    : renderUblInvoice({ ...data, seller, buyer });
+  return {
+    xml,
     invoice,
-  );
-  const xml = renderUblInvoice({
-    ...data,
-    seller: {
-      name: company.legalName,
-      ...(company.taxRegistrationNumber
-        ? { taxRegistrationNumber: company.taxRegistrationNumber }
-        : {}),
-      ...(company.address ? { address: company.address } : {}),
-    },
-    buyer: {
-      name: data.partySnapshot.name as string,
-      ...(data.partySnapshot.taxRegistrationNumber
-        ? { taxRegistrationNumber: data.partySnapshot.taxRegistrationNumber }
-        : {}),
-      ...(data.partySnapshot.billingAddress ? { address: data.partySnapshot.billingAddress } : {}),
-    },
-  });
-  return { xml, invoice, sellerTrn: company.taxRegistrationNumber as string | undefined };
+    number: (note?.number ?? invoice.number) as string,
+    sellerTrn: company.taxRegistrationNumber as string | undefined,
+  };
 }
 
 /**
- * Sends a posted sales invoice to the provider. Safe to repeat. A provider outage rethrows so the
+ * Sends a posted sales invoice or credit note to the provider. Safe to repeat. A provider outage rethrows so the
  * queue retries it; a rejection is a final answer that a person has to look at.
  */
 export async function issueEInvoice(
@@ -123,7 +145,7 @@ export async function issueEInvoice(
   if (existing?.status === 'ACCEPTED') return;
   if (existing?.status === 'REJECTED' && !options.retry) return;
 
-  const { xml, invoice, sellerTrn } = await buildXml(companyId, id);
+  const { xml, invoice, number, sellerTrn } = await buildXml(companyId, id);
   // The mandate covers business and government buyers. Retail sales stay out of it.
   const party = await PartyModel.findOne({ companyId, _id: invoice.partyId }).lean();
   if (party?.type !== 'BUSINESS') return;
@@ -133,14 +155,14 @@ export async function issueEInvoice(
   await EInvoiceModel.updateOne(
     scope,
     {
-      $set: { xml, xmlSha256, provider: provider.name, status: 'PENDING', number: invoice.number },
+      $set: { xml, xmlSha256, provider: provider.name, status: 'PENDING', number },
       $inc: { attempts: 1 },
     },
     { upsert: true },
   );
   try {
     const result = await provider.submit({
-      number: invoice.number,
+      number,
       xml,
       ...(sellerTrn ? { sellerTrn } : {}),
     });
@@ -195,7 +217,7 @@ export function createEInvoiceRouter(
     const sent = await EInvoiceModel.findOne({ companyId: req.ctx.companyId, sourceId: id }).lean();
     const built = sent ? null : await buildXml(req.ctx.companyId, id);
     const xml = (sent?.xml ?? built?.xml) as string;
-    const number = (sent?.number ?? built?.invoice.number) as string;
+    const number = (sent?.number ?? built?.number) as string;
     res
       .status(200)
       .set({

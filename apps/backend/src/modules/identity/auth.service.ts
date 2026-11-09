@@ -1,12 +1,12 @@
 import type { AuthResult, AuthUser } from '@lumio/shared-types';
 import argon2 from 'argon2';
 import { jwtVerify, SignJWT } from 'jose';
-import mongoose, { type Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { runtime } from '../../config/runtime.js';
 import { AppError, ConflictError } from '../../shared/errors.js';
 import { randomToken, sha256 } from '../../shared/crypto.js';
 import { decrypt, encrypt } from '../../shared/crypto.js';
-import { loadAccess } from '../access/index.js';
+import { loadAccess, RoleAssignmentModel } from '../access/index.js';
 import { CompanyModel } from '../organisation/index.js';
 import { LoginHistoryModel, SessionModel, UserModel } from './identity.models.js';
 import { generateTotpSecret, otpauthUrl, verifyTotp } from './totp.js';
@@ -268,6 +268,39 @@ export async function verifyAccessToken(token: string): Promise<AccessClaims> {
     userId: payload.sub,
     sessionId: String(payload.sid),
     companyId: (payload.cid as string) ?? null,
+  };
+}
+
+/** The companies this person holds a role in. Spans tenants by design, so it skips the guard. */
+export async function listUserCompanies(userId: string) {
+  const ids = await RoleAssignmentModel.collection.distinct('companyId', {
+    userId: new Types.ObjectId(userId),
+  });
+  const companies = await CompanyModel.find({
+    _id: mongoose.trusted({ $in: ids }),
+    status: 'ACTIVE',
+  })
+    .select({ legalName: 1 })
+    .sort({ legalName: 1 })
+    .lean();
+  return companies.map((c) => ({ id: c._id.toString(), name: c.legalName }));
+}
+
+/** Changes which company this session works in. Access comes from the role held there. */
+export async function switchCompany(claims: AccessClaims, companyId: string): Promise<AuthResult> {
+  const allowed = await listUserCompanies(claims.userId);
+  if (!allowed.some((company) => company.id === companyId)) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have access to that company.');
+  }
+  await UserModel.updateOne(
+    { _id: claims.userId },
+    { $set: { activeCompanyId: new Types.ObjectId(companyId) } },
+  );
+  const user = await UserModel.findById(claims.userId).lean();
+  if (!user) throw invalidCredentials();
+  return {
+    accessToken: await accessTokenFor(user, new Types.ObjectId(claims.sessionId)),
+    user: await describeUser(user._id),
   };
 }
 

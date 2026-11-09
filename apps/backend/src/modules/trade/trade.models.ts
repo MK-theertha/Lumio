@@ -76,6 +76,7 @@ function tradeSchema(collection: string) {
       docDate: { type: Date, required: true },
       dueDate: Date,
       supplierInvoiceNo: String,
+      goodsReceiptId: OID,
       lines: { type: [lineSchema], required: true },
       plannedPayments: { type: [Schema.Types.Mixed], default: [] },
       taxableTotal: RD128,
@@ -135,6 +136,27 @@ const creditNoteSchema = tenantSchema(
 creditNoteSchema.index({ companyId: 1, number: 1 }, { unique: true });
 creditNoteSchema.index({ companyId: 1, originalId: 1 });
 export const CreditNoteModel = tenantModel('CreditNote', creditNoteSchema);
+
+const goodsReceiptSchema = tenantSchema(
+  'goodsReceipts',
+  {
+    number: RS,
+    partyId: ROID,
+    branchId: ROID,
+    receiptDate: { type: Date, required: true },
+    purchaseOrderId: OID,
+    status: { type: String, enum: ['RECEIVED', 'INVOICED'], required: true },
+    invoiceId: String,
+    lines: { type: [Schema.Types.Mixed], required: true },
+    total: RD128,
+    journalEntryId: ROID,
+    createdBy: RS,
+  },
+  { timestamps: true },
+);
+goodsReceiptSchema.index({ companyId: 1, number: 1 }, { unique: true });
+goodsReceiptSchema.index({ companyId: 1, status: 1, partyId: 1 });
+export const GoodsReceiptModel = tenantModel('GoodsReceipt', goodsReceiptSchema);
 
 const purchaseOrderSchema = tenantSchema(
   'purchaseOrders',

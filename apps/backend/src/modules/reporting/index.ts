@@ -8,10 +8,12 @@ import { AppError, NotFoundError } from '../../shared/errors.js';
 import { sendSuccess } from '../../shared/http.js';
 import { REPORTS, type Row } from './catalogue.js';
 import { buildDashboard } from './dashboard.js';
+import { toPdf, toXlsx } from './exports.js';
 import {
   balanceSheet,
   cashFlow,
   generalLedger,
+  partyStatement,
   profitAndLoss,
   trialBalance,
   type Range,
@@ -58,6 +60,8 @@ function toCsv(rows: Row[]): string {
   );
 }
 
+export { createReportScheduleRouter, runDueSchedules, type ReportEmail } from './schedules.js';
+
 export function createReportingRouter(): Router {
   const router = Router();
 
@@ -87,6 +91,29 @@ export function createReportingRouter(): Router {
     },
   );
 
+  router.get(
+    '/party-statements/:id',
+    requirePermission('party:read', 'report:read'),
+    validate({ params: z.object({ id: objectIdSchema }) }),
+    async (req, res) => {
+      const statement = await partyStatement(req.ctx, String(req.params.id), rangeOf(req));
+      if (req.query.format === 'pdf') {
+        res
+          .type('application/pdf')
+          .attachment('statement.pdf')
+          .send(
+            await toPdf(
+              `Statement: ${statement.party}`,
+              statement.rows,
+              `Opening ${statement.opening}, closing ${statement.closing}`,
+            ),
+          );
+        return;
+      }
+      sendSuccess(req, res, statement);
+    },
+  );
+
   router.get('/reports', requirePermission('report:read'), (req, res) => {
     sendSuccess(
       req,
@@ -104,14 +131,23 @@ export function createReportingRouter(): Router {
       throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this report.');
     }
     const rows = await report.run(req.ctx, rangeOf(req));
-    if (req.query.format === 'csv') {
+    const format = req.query.format;
+    if (format === 'csv' || format === 'xlsx' || format === 'pdf') {
       if (!req.ctx.permissions.has('report:export')) {
         throw new AppError(403, 'FORBIDDEN', 'You do not have permission to export reports.');
       }
-      res
-        .type('text/csv')
-        .attachment(`${String(req.params.key)}.csv`)
-        .send(toCsv(rows));
+      const file = `${String(req.params.key)}.${format}`;
+      if (format === 'csv') res.type('text/csv').attachment(file).send(toCsv(rows));
+      else if (format === 'xlsx') {
+        res
+          .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+          .attachment(file)
+          .send(toXlsx(report.title, rows));
+      } else
+        res
+          .type('application/pdf')
+          .attachment(file)
+          .send(await toPdf(report.title, rows));
       return;
     }
     sendSuccess(req, res, { title: report.title, rows });

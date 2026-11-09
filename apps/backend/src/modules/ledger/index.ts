@@ -10,6 +10,7 @@ export {
 export {
   assertOpenPeriod,
   beginPeriodClose,
+  closeFinancialYear,
   completePeriodClose,
   createYearPeriods,
   postJournal,

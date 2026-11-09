@@ -3,6 +3,7 @@ import type { Permission } from '@lumio/shared-types';
 import {
   bankLineAdjustSchema,
   bankLineMatchSchema,
+  bankLineNetSchema,
   bankStatementImportSchema,
   objectIdSchema,
   reconciliationCreateSchema,
@@ -27,7 +28,7 @@ import { d128, dec, Decimal } from '../../shared/decimal.js';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../shared/errors.js';
 import { sendSuccess } from '../../shared/http.js';
 import { plain } from '../../shared/serialize.js';
-import { JournalLineModel, postJournal } from '../ledger/index.js';
+import { FinancialPeriodModel, JournalLineModel, postJournal } from '../ledger/index.js';
 import { recordAudit } from '../platform/audit/index.js';
 import { FinancialAccountModel, PaymentModel } from './finance.models.js';
 import { parseStatementCsv, type DateOrder } from './statement-csv.js';
@@ -43,7 +44,8 @@ const lineSchema = tenantSchema(
     balance: D128,
     fingerprint: RS,
     importedBy: RS,
-    status: { type: String, enum: ['UNMATCHED', 'MATCHED', 'ADJUSTED'], required: true },
+    status: { type: String, enum: ['UNMATCHED', 'MATCHED', 'ADJUSTED', 'NETTED'], required: true },
+    nettedWith: OID,
     adjustmentEntryId: OID,
     // Set when a completed reconciliation has relied on this line.
     reconciliationId: OID,
@@ -287,6 +289,132 @@ export function adjustLine(
     });
     return { id: lineId, status: 'ADJUSTED', journalNumber: journal.number };
   });
+}
+
+/** Two lines that cancel out, such as a cheque paid in and then returned unpaid. */
+export function netLines(ctx: RequestContext, lineId: string, otherLineId: string) {
+  return runInTransaction(ctx, async (tx) => {
+    if (lineId === otherLineId) throw new BusinessRuleError('Choose two different lines.');
+    const claim = (id: string, partner: string) =>
+      BankStatementLineModel.findOneAndUpdate(
+        { companyId: tx.companyId, _id: id, status: 'UNMATCHED' },
+        { $set: { status: 'NETTED', nettedWith: partner } },
+        { returnDocument: 'after', session: tx.session },
+      ).lean();
+    const first = await claim(lineId, otherLineId);
+    const second = await claim(otherLineId, lineId);
+    if (!first || !second) throw new ConflictError('Both lines must still be unmatched.');
+    if (!first.financialAccountId.equals(second.financialAccountId)) {
+      throw new BusinessRuleError('The lines belong to different accounts.');
+    }
+    if (!dec(first.amount).plus(dec(second.amount)).isZero()) {
+      throw new BusinessRuleError('The two lines do not cancel out.');
+    }
+    await recordAudit(tx, {
+      action: 'bank_statement.net',
+      entityType: 'bank_statement_line',
+      entityId: lineId,
+      after: { otherLineId },
+    });
+    return { id: lineId, status: 'NETTED' };
+  });
+}
+
+/** A period should not close with bank activity nobody has explained. */
+export async function assertBankLinesExplained(ctx: RequestContext, periodId: string) {
+  const period = await FinancialPeriodModel.findOne({
+    companyId: ctx.companyId,
+    _id: periodId,
+  }).lean();
+  if (!period) throw new NotFoundError();
+  const open = await BankStatementLineModel.countDocuments({
+    companyId: ctx.companyId,
+    status: 'UNMATCHED',
+    date: mongoose.trusted({ $lte: period.to }),
+  });
+  if (open > 0) {
+    throw new BusinessRuleError(
+      `${open} bank statement line(s) in or before ${period.name} still need matching or booking.`,
+    );
+  }
+}
+
+/** Every receipt and payment on an account, with a running balance. */
+export async function cashBook(
+  ctx: RequestContext,
+  accountId: string,
+  from: Date | undefined,
+  to: Date | undefined,
+) {
+  const account = await findAccount(ctx, accountId);
+  const before = from ? { $lt: from } : null;
+  const range = {
+    ...(from ? { $gte: from } : {}),
+    ...(to ? { $lte: endOfDay(to) } : {}),
+  };
+  const hasRange = Object.keys(range).length > 0;
+  const posted = { companyId: ctx.companyId, financialAccountId: account._id, status: 'POSTED' };
+  const adjusted = { ...posted, status: 'ADJUSTED' };
+
+  let opening = new Decimal(0);
+  if (before) {
+    const earlier = await sumBy(PaymentModel, { ...posted, paymentDate: before }, ctx);
+    const fees = await BankStatementLineModel.find({
+      ...adjusted,
+      date: mongoose.trusted(before),
+    })
+      .select({ amount: 1 })
+      .lean();
+    opening = earlier.receipts
+      .minus(earlier.payments)
+      .plus(fees.reduce((sum, row) => sum.plus(dec(row.amount)), new Decimal(0)));
+  }
+  const payments = await PaymentModel.find({
+    ...posted,
+    ...(hasRange ? { paymentDate: mongoose.trusted(range) } : {}),
+  })
+    .select({ number: 1, direction: 1, amount: 1, paymentDate: 1, reference: 1 })
+    .limit(5000)
+    .lean();
+  const adjustments = await BankStatementLineModel.find({
+    ...adjusted,
+    ...(hasRange ? { date: mongoose.trusted(range) } : {}),
+  })
+    .select({ amount: 1, date: 1, description: 1 })
+    .limit(5000)
+    .lean();
+
+  const movements = [
+    ...payments.map((p) => ({
+      id: String(p._id),
+      date: p.paymentDate as Date,
+      number: p.number as string,
+      description: (p.reference ?? '') as string,
+      amount: signed(p.direction, dec(p.amount)),
+    })),
+    ...adjustments.map((a) => ({
+      id: String(a._id),
+      date: a.date as Date,
+      number: 'BANK',
+      description: a.description as string,
+      amount: dec(a.amount),
+    })),
+  ].sort((a, b) => a.date.getTime() - b.date.getTime() || a.id.localeCompare(b.id));
+
+  let balance = opening;
+  const rows = movements.map((m) => {
+    balance = balance.plus(m.amount);
+    return {
+      id: m.id,
+      date: m.date.toISOString(),
+      number: m.number,
+      description: m.description,
+      receipt: m.amount.isPositive() ? m.amount.toFixed(2) : '',
+      payment: m.amount.isNegative() ? m.amount.abs().toFixed(2) : '',
+      balance: balance.toFixed(2),
+    };
+  });
+  return { opening: opening.toFixed(2), closing: balance.toFixed(2), rows };
 }
 
 interface OpenPayment {
@@ -606,6 +734,36 @@ export function createBankReconciliationRouter(): Router {
       sendSuccess(req, res, await adjustLine(req.ctx, String(req.params.id), body));
     },
   );
+
+  router.post(
+    '/bank-statement-lines/:id/net',
+    allow('manage'),
+    validate({ params: z.object({ id: objectIdSchema }), body: bankLineNetSchema }),
+    async (req, res) => {
+      const { otherLineId } = req.validated.body as z.infer<typeof bankLineNetSchema>;
+      sendSuccess(req, res, await netLines(req.ctx, String(req.params.id), otherLineId));
+    },
+  );
+
+  router.get('/cash-book', requirePermission('payment:read'), async (req, res) => {
+    const query = z
+      .object({
+        financialAccountId: objectIdSchema,
+        from: z.iso.date().optional(),
+        to: z.iso.date().optional(),
+      })
+      .parse(req.query);
+    sendSuccess(
+      req,
+      res,
+      await cashBook(
+        req.ctx,
+        query.financialAccountId,
+        query.from ? new Date(query.from) : undefined,
+        query.to ? new Date(query.to) : undefined,
+      ),
+    );
+  });
 
   router.post(
     '/bank-reconciliations/auto-match',

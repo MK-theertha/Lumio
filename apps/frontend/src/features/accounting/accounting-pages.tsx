@@ -17,7 +17,8 @@ import {
 import { useRefOptions, type Row } from '@/components/app/resource-page';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
-import { apiCommand, apiGet, apiSend, downloadCsv } from '@/lib/api-client';
+import { apiCommand, apiGet, apiSend, downloadExport } from '@/lib/api-client';
+import { ReportSchedules } from './ledgers-pages';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -235,6 +236,21 @@ export function PaymentsPage() {
   );
 }
 
+const FOREIGN_LABELS = {
+  currency: 'Currency',
+  foreignAmount: 'Foreign amount',
+  exchangeRate: 'Rate',
+};
+
+const BLANK_LINE = {
+  accountId: '',
+  debit: '',
+  credit: '',
+  currency: '',
+  foreignAmount: '',
+  exchangeRate: '',
+};
+
 export function JournalsPage() {
   const { can } = useAuth();
   const action = useAction();
@@ -244,10 +260,7 @@ export function JournalsPage() {
   const [drafting, setDrafting] = useState(false);
   const [memo, setMemo] = useState('');
   const [date, setDate] = useState(today());
-  const [lines, setLines] = useState([
-    { accountId: '', debit: '', credit: '' },
-    { accountId: '', debit: '', credit: '' },
-  ]);
+  const [lines, setLines] = useState([{ ...BLANK_LINE }, { ...BLANK_LINE }]);
   const account = useMemo(
     () =>
       new Map(accounts.data?.rows.map((a) => [a.id, `${a.code as string} ${a.name as string}`])),
@@ -349,7 +362,7 @@ export function JournalsPage() {
               <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </Field>
             {lines.map((line, index) => (
-              <div key={index} className="grid grid-cols-3 gap-2">
+              <div key={index} className="grid grid-cols-3 gap-2 md:grid-cols-6">
                 <Select
                   aria-label="Account"
                   value={line.accountId}
@@ -389,14 +402,25 @@ export function JournalsPage() {
                     )
                   }
                 />
+                {(['currency', 'foreignAmount', 'exchangeRate'] as const).map((field) => (
+                  <Input
+                    key={field}
+                    aria-label={FOREIGN_LABELS[field]}
+                    placeholder={FOREIGN_LABELS[field]}
+                    value={line[field]}
+                    onChange={(e) =>
+                      setLines((all) =>
+                        all.map((l, i) => (i === index ? { ...l, [field]: e.target.value } : l)),
+                      )
+                    }
+                  />
+                ))}
               </div>
             ))}
             <div className="flex justify-between">
               <Button
                 variant="outline"
-                onClick={() =>
-                  setLines((all) => [...all, { accountId: '', debit: '', credit: '' }])
-                }
+                onClick={() => setLines((all) => [...all, { ...BLANK_LINE }])}
               >
                 Add line
               </Button>
@@ -414,6 +438,13 @@ export function JournalsPage() {
                           accountId: l.accountId,
                           debit: l.debit || '0',
                           credit: l.credit || '0',
+                          ...(l.foreignAmount
+                            ? {
+                                currency: l.currency,
+                                foreignAmount: l.foreignAmount,
+                                exchangeRate: l.exchangeRate,
+                              }
+                            : {}),
                         })),
                     },
                   });
@@ -437,6 +468,22 @@ export function PeriodsPage() {
   return (
     <div>
       <PageHeader title="Financial periods">
+        {can('period:close') && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              const year = window.prompt('Post closing entries for which year?');
+              if (
+                year &&
+                window.confirm(`Move all ${year} income and expense to retained earnings?`)
+              ) {
+                action.mutate({ path: '/periods/year-end', body: { year: Number(year) } });
+              }
+            }}
+          >
+            Close year
+          </Button>
+        )}
         {can('period:create') && (
           <Button
             variant="outline"
@@ -676,15 +723,19 @@ export function ReportsPage() {
           value={to}
           onChange={(e) => setTo(e.target.value)}
         />
-        {can('report:export') && (
-          <Button
-            variant="outline"
-            disabled={rows.length === 0}
-            onClick={() => void downloadCsv(`/reports/${active}`, `${active}.csv`, params)}
-          >
-            Export CSV
-          </Button>
-        )}
+        {can('report:export') &&
+          (['csv', 'xlsx', 'pdf'] as const).map((format) => (
+            <Button
+              key={format}
+              variant="outline"
+              disabled={rows.length === 0}
+              onClick={() =>
+                void downloadExport(`/reports/${active}`, `${active}.${format}`, format, params)
+              }
+            >
+              {format.toUpperCase()}
+            </Button>
+          ))}
       </PageHeader>
       <QueryState query={query} empty={rows.length === 0}>
         <Table
@@ -692,6 +743,7 @@ export function ReportsPage() {
           columns={headers.map((h) => ({ header: h, render: (r: Row) => String(r[h] ?? '') }))}
         />
       </QueryState>
+      {can('report:export') && <ReportSchedules reports={list.data ?? []} />}
     </div>
   );
 }

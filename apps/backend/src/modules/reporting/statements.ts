@@ -1,3 +1,5 @@
+import { NotFoundError } from '../../shared/errors.js';
+import { PartyModel } from '../master/index.js';
 import mongoose, { Types } from 'mongoose';
 import type { RequestContext } from '../../shared/context.js';
 import { dec, Decimal } from '../../shared/decimal.js';
@@ -16,10 +18,11 @@ export const dateFilter = (field: string, range: Range) => {
   return Object.keys(condition).length ? { [field]: mongoose.trusted(condition) } : {};
 };
 
-async function accountTotals(ctx: RequestContext, range: Range) {
+async function accountTotals(ctx: RequestContext, range: Range, excludeClosing = false) {
   const match: Record<string, unknown> = {
     companyId: ctx.companyId,
     ...dateFilter('postingDate', range),
+    ...(excludeClosing ? { closing: { $ne: true } } : {}),
   };
   if (range.branchId) match.branchId = new Types.ObjectId(range.branchId);
   const [accounts, totals] = await Promise.all([
@@ -61,7 +64,8 @@ export async function trialBalance(ctx: RequestContext, range: Range) {
 }
 
 export async function profitAndLoss(ctx: RequestContext, range: Range) {
-  const rows = await accountTotals(ctx, range);
+  // Closing entries move profit to equity. They are not part of the year's performance.
+  const rows = await accountTotals(ctx, range, true);
   const pick = (type: string, natural: 'credit' | 'debit') =>
     rows
       .filter((r) => r.account.type === type)
@@ -187,4 +191,58 @@ export async function cashFlow(ctx: RequestContext, range: Range) {
     financing: f(totals.FINANCING as Decimal),
     netChange: f(sum(Object.values(totals))),
   };
+}
+
+/** Everything that moved a party's balance, from the ledger, with a running balance. */
+export async function partyStatement(ctx: RequestContext, partyId: string, range: Range) {
+  const party = await PartyModel.findOne({ companyId: ctx.companyId, _id: partyId }).lean();
+  if (!party) throw new NotFoundError();
+  const control = await LedgerAccountModel.find({
+    companyId: ctx.companyId,
+    systemRole: mongoose.trusted({ $in: ['AR', 'AP'] }),
+  })
+    .select({ _id: 1 })
+    .lean();
+  const base = {
+    companyId: ctx.companyId,
+    partyId,
+    accountId: mongoose.trusted({ $in: control.map((c) => c._id) }),
+  };
+  const earlier = range.from
+    ? await JournalLineModel.find({
+        ...base,
+        postingDate: mongoose.trusted({ $lt: range.from }),
+      })
+        .select({ debit: 1, credit: 1 })
+        .lean()
+    : [];
+  const opening = earlier.reduce(
+    (total, line) => total.plus(dec(line.debit)).minus(dec(line.credit)),
+    new Decimal(0),
+  );
+  const lines = await JournalLineModel.find({ ...base, ...dateFilter('postingDate', range) })
+    .sort({ postingDate: 1, _id: 1 })
+    .limit(5000)
+    .lean();
+  const entries = await JournalEntryModel.find({
+    companyId: ctx.companyId,
+    _id: mongoose.trusted({ $in: lines.map((l) => l.entryId) }),
+  })
+    .select({ number: 1, memo: 1 })
+    .lean();
+  const entry = new Map(entries.map((e) => [String(e._id), e]));
+  let balance = opening;
+  const rows = lines.map((line) => {
+    balance = balance.plus(dec(line.debit)).minus(dec(line.credit));
+    const source = entry.get(String(line.entryId));
+    return {
+      date: line.postingDate.toISOString().slice(0, 10),
+      journal: source?.number as string,
+      description: source?.memo as string,
+      debit: f(dec(line.debit)),
+      credit: f(dec(line.credit)),
+      balance: f(balance),
+    };
+  });
+  return { party: party.name as string, opening: f(opening), closing: f(balance), rows };
 }

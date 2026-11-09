@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import argon2 from 'argon2';
 import mongoose, { Types } from 'mongoose';
 import { runtime } from '../../config/runtime.js';
@@ -62,6 +63,39 @@ async function replaceAssignments(
   );
 }
 
+/**
+ * Checks Have I Been Pwned by k-anonymity: only the first five characters of the SHA-1 hash leave
+ * this server. If the service cannot be reached the password is allowed, so an outage there
+ * cannot stop anyone signing up.
+ */
+export async function assertPasswordNotBreached(password: string): Promise<void> {
+  if (!runtime().PASSWORD_BREACH_CHECK) return;
+  const hash = createHash('sha1').update(password).digest('hex').toUpperCase();
+  let body: string;
+  try {
+    const response = await fetch(`https://api.pwnedpasswords.com/range/${hash.slice(0, 5)}`, {
+      headers: { 'Add-Padding': 'true' },
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) return;
+    body = await response.text();
+  } catch {
+    return;
+  }
+  const suffix = hash.slice(5);
+  const found = body.split('\n').some((line) => {
+    const [candidate, count] = line.trim().split(':');
+    return candidate === suffix && Number(count) > 0;
+  });
+  if (found) {
+    throw new AppError(
+      422,
+      'BUSINESS_RULE_VIOLATION',
+      'This password has appeared in a data breach. Please choose a different one.',
+    );
+  }
+}
+
 export function inviteUser(
   ctx: RequestContext,
   input: { email: string; name: string; assignments: Assignment[] },
@@ -82,8 +116,6 @@ export function inviteUser(
         subject: 'You have been invited to Lumio',
         text: `Set your password to get started: ${runtime().APP_URL}/accept-invite?token=${token}`,
       });
-    } else if (existing?.activeCompanyId && !existing.activeCompanyId.equals(tx.companyId)) {
-      throw new ConflictError('This email already belongs to a user of another company.');
     }
     await replaceAssignments(tx, userId, input.assignments);
     await recordAudit(tx, {
@@ -170,6 +202,8 @@ async function consumeToken(token: string, purposes: ('INVITE' | 'RESET')[]) {
 
 /** Completes an invitation or password reset. Existing sessions are revoked. */
 export async function setPasswordWithToken(token: string, password: string): Promise<void> {
+  // Before the token is consumed, so a rejected password does not use up the link.
+  await assertPasswordNotBreached(password);
   const row = await consumeToken(token, ['INVITE', 'RESET']);
   const now = new Date();
   await UserModel.updateOne(
@@ -200,6 +234,7 @@ export async function changePassword(
   if (!user?.passwordHash || !(await argon2.verify(user.passwordHash, current))) {
     throw new AppError(422, 'BUSINESS_RULE_VIOLATION', 'The current password is incorrect.');
   }
+  await assertPasswordNotBreached(next);
   await UserModel.updateOne(
     { _id: user._id },
     { $set: { passwordHash: await hashPassword(next) } },
@@ -255,6 +290,7 @@ export async function createFirstPlatformAdmin(input: {
   }
   const email = normaliseEmail(input.email);
   if (await UserModel.exists({ email })) throw new ConflictError('This email is already in use.');
+  await assertPasswordNotBreached(input.password);
   const user = await UserModel.create({
     email,
     name: input.name,

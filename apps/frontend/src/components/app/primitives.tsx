@@ -97,6 +97,8 @@ const STATUS_TONE: Record<string, string> = {
   CLEARED: 'good',
   SETTLED: 'good',
   CLEAN: 'good',
+  NETTED: 'good',
+  INVOICED: 'good',
   PASSED: 'good',
   INFO: 'plain',
   WARNING: 'warn',
