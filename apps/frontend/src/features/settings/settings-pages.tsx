@@ -243,6 +243,7 @@ export function CompanySettingsPage() {
                     legalName: v.get('legalName'),
                     ...opt('taxRegistrationNumber'),
                     ...opt('address'),
+                    ...opt('goamlEntityId'),
                     settings: {
                       allowNegativeStock: v.get('allowNegativeStock') === 'on',
                       rateApprovalRequired: v.get('rateApprovalRequired') === 'on',
@@ -267,6 +268,9 @@ export function CompanySettingsPage() {
               </Field>
               <Field label="Address">
                 <Input name="address" defaultValue={(d.address as string) ?? ''} />
+              </Field>
+              <Field label="goAML reporting entity ID">
+                <Input name="goamlEntityId" defaultValue={(d.goamlEntityId as string) ?? ''} />
               </Field>
               <Field label="Invoice numbering scope">
                 <Select name="numberingScope" defaultValue={d.settings.numberingScope as string}>

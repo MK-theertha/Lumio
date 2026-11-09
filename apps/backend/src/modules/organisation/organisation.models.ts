@@ -42,6 +42,7 @@ const companySchema = new Schema(
     baseCurrency: { type: String, required: true },
     taxRegistrationNumber: String,
     address: String,
+    goamlEntityId: String,
     status: { type: String, enum: ['ACTIVE', 'SUSPENDED'], default: 'ACTIVE' },
     isDemo: { type: Boolean, default: false },
     settings: { type: settingsSchema, default: () => ({}) },

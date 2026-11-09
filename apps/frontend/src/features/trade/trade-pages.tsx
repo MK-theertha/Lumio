@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Printer, Trash2 } from 'lucide-react';
+import { FileDown, Plus, Printer, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -18,7 +18,9 @@ import {
 import { useRefOptions, type Row } from '@/components/app/resource-page';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
-import { apiCommand, apiGet, apiList, apiSend } from '@/lib/api-client';
+import { DocumentsPanel } from '@/features/documents/documents';
+import { apiCommand, apiGet, apiList, apiSend, downloadFile } from '@/lib/api-client';
+import { EInvoiceStatus } from './e-invoices-page';
 
 export type Mode = 'sale' | 'purchase';
 const CONFIG = {
@@ -603,6 +605,18 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
                   Post
                 </Button>
               )}
+              {doc.number && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    downloadFile(`${config.path}/${id}/pdf`, `${doc.number}.pdf`).catch(
+                      (error: Error) => toast.error(error.message),
+                    );
+                  }}
+                >
+                  <FileDown className="size-4" aria-hidden /> PDF
+                </Button>
+              )}
               <Button variant="outline" onClick={() => window.print()}>
                 <Printer className="size-4" aria-hidden /> Print
               </Button>
@@ -690,6 +704,14 @@ export function TradeDetailPage({ mode }: { mode: Mode }) {
           <Card>
             <Totals doc={doc} />
           </Card>
+          <div className="print:hidden space-y-4">
+            {mode === 'sale' && doc.number && can('einvoice:read') && (
+              <EInvoiceStatus saleId={id} number={doc.number} />
+            )}
+            {can('document:read') && (
+              <DocumentsPanel ownerType={mode === 'sale' ? 'SALE' : 'PURCHASE'} ownerId={id} />
+            )}
+          </div>
         </div>
       )}
     </QueryState>

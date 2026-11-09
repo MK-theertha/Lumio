@@ -66,8 +66,8 @@ Key rotation is supported by a key ID on every ciphertext. Data at rest and in t
 
 ## 9.6 Documents
 
-Client requests an upload → API validates type and size and issues a presigned URL to a **quarantine** prefix → worker verifies magic bytes and scans with ClamAV → moves to private storage and marks `CLEAN`.
-Downloads need a permission check, are audited, and use URLs valid for about a minute. `scanStatus != CLEAN` is not downloadable.
+Files are sent through the API, which decides the type from the file's own bytes (PDF, PNG or JPEG only), limits the size to 10 MB and writes to private S3-compatible storage. An outbox event has the worker scan the file with ClamAV. Clean files become downloadable; infected files are deleted and their record kept.
+Downloads go through the API, need a permission check and are audited. `scanStatus` of `PENDING` or `INFECTED` is not downloadable, and a scanner failure leaves the file blocked. Without a scanner, which only development allows, files are marked `SCAN_SKIPPED`. Files attached to KYC records also need `kyc:read`.
 
 ## 9.7 Audit
 

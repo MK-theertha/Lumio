@@ -29,6 +29,8 @@ export interface CrudOptions {
   prepare?: (body: Record<string, unknown>) => Record<string, unknown>;
   /** Hides or changes fields before returning a record. */
   present?: (row: Record<string, unknown>, req: Request) => Record<string, unknown>;
+  /** Follow-up work on a saved record. Its failure is logged and does not fail the request. */
+  afterSave?: (id: string, req: Request) => Promise<unknown>;
 }
 
 const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -68,6 +70,12 @@ export function crudRouter(options: CrudOptions): Router {
   const present = (row: unknown, req: Request) => {
     const output = plain<Record<string, unknown>>(row);
     return options.present ? options.present(output, req) : output;
+  };
+
+  const runAfterSave = async (id: string, req: Request) => {
+    await options.afterSave?.(id, req).catch((error: unknown) => {
+      req.log.error({ err: error, entityType }, 'After-save step failed');
+    });
   };
 
   const findScoped = async (req: Request) => {
@@ -126,6 +134,7 @@ export function crudRouter(options: CrudOptions): Router {
       entityId: String(created._id),
       after: plain(body),
     });
+    await runAfterSave(String(created._id), req);
     sendSuccess(req, res, present(created.toObject(), req), 201);
   });
 
@@ -152,6 +161,7 @@ export function crudRouter(options: CrudOptions): Router {
         before: plain(before),
         after: plain(body),
       });
+      await runAfterSave(String(req.params.id), req);
       sendSuccess(req, res, present(updated, req));
     },
   );

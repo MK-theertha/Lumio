@@ -48,6 +48,7 @@ const NAV: NavGroup[] = [
     icon: Receipt,
     items: [
       { to: '/sales', label: 'Sales invoices', permission: 'sale:read' },
+      { to: '/e-invoices', label: 'E-invoices', permission: 'einvoice:read' },
       { to: '/customers', label: 'Customers', permission: 'party:read' },
     ],
   },
@@ -85,6 +86,11 @@ const NAV: NavGroup[] = [
       { to: '/payments', label: 'Payments', permission: 'payment:read' },
       { to: '/accounts', label: 'Cash and bank', permission: 'financial_account:read' },
       { to: '/payment-methods', label: 'Methods', permission: 'payment_method:read' },
+      {
+        to: '/bank-reconciliation',
+        label: 'Bank reconciliation',
+        permission: 'bank_reconciliation:read',
+      },
     ],
   },
   {
@@ -111,6 +117,9 @@ const NAV: NavGroup[] = [
       { to: '/kyc', label: 'KYC records', permission: 'kyc:read' },
       { to: '/compliance/cases', label: 'Cases', permission: 'compliance_case:read' },
       { to: '/compliance/rules', label: 'Rules', permission: 'compliance_rule:read' },
+      { to: '/compliance/sanctions', label: 'Sanctions', permission: 'sanctions:review' },
+      { to: '/compliance/goaml', label: 'goAML reports', permission: 'goaml:view' },
+      { to: '/documents', label: 'Documents', permission: 'document:read' },
       { to: '/audit-log', label: 'Audit log', permission: 'audit:read' },
     ],
   },

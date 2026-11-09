@@ -74,6 +74,7 @@ export const companySettingsSchema = z.strictObject({
   legalName: text.optional(),
   taxRegistrationNumber: optionalText,
   address: optionalText,
+  goamlEntityId: optionalText,
   settings: z
     .strictObject({
       allowNegativeStock: z.boolean().optional(),
@@ -122,6 +123,8 @@ export const partySchema = z.strictObject({
   category: optionalText,
   creditLimit: decimalNonNegative.optional(),
   notes: optionalText,
+  dateOfBirth: z.iso.date().optional(),
+  nationality: z.string().trim().length(2).toUpperCase().optional(),
 });
 const chargeRule = z.strictObject({
   mode: z.string().min(1),
@@ -406,4 +409,70 @@ export const complianceRuleSchema = z.strictObject({
 export const caseDecisionSchema = z.strictObject({
   status: z.enum(['UNDER_REVIEW', 'CLEARED', 'REPORTED']),
   decisionNote: text,
+});
+
+/* Documents */
+export const DOCUMENT_OWNER_TYPES = ['PARTY', 'KYC', 'SALE', 'PURCHASE', 'PAYMENT'] as const;
+export const documentUploadQuerySchema = z.object({
+  ownerType: z.enum(DOCUMENT_OWNER_TYPES),
+  ownerId: id,
+  category: z.enum([
+    'EMIRATES_ID',
+    'PASSPORT',
+    'TRADE_LICENCE',
+    'ASSAY_CERTIFICATE',
+    'CONTRACT',
+    'BANK_PROOF',
+    'OTHER',
+  ]),
+  fileName: z.string().trim().min(1).max(200),
+  expiresAt: z.iso.date().optional(),
+  replaces: id.optional(),
+});
+export const documentListQuerySchema = z.object({
+  ownerType: z.enum(DOCUMENT_OWNER_TYPES).optional(),
+  ownerId: id.optional(),
+  expiringWithinDays: z.coerce.number().int().min(0).max(3650).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/* Sanctions */
+export const sanctionsImportQuerySchema = z.object({
+  source: z.string().trim().min(1).max(40).toUpperCase(),
+  format: z.enum(['UN_XML', 'CSV']),
+});
+export const sanctionsDecisionSchema = z.strictObject({
+  decision: z.enum(['FALSE_POSITIVE', 'CONFIRMED']),
+  note: text,
+});
+
+/* goAML */
+export const goamlCreateSchema = z.strictObject({
+  reportType: z.enum(['DPMSR', 'STR']),
+  caseIds: z.array(id).min(1).max(100),
+  reason: z.string().trim().min(1).max(4000),
+  action: z.string().trim().max(4000).optional(),
+  indicators: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
+});
+export const goamlSubmittedSchema = z.strictObject({ fiuReference: text });
+
+/* Bank reconciliation */
+export const bankStatementImportSchema = z.strictObject({
+  financialAccountId: id,
+  csv: z.string().min(1).max(900_000),
+  dateOrder: z.enum(['DMY', 'MDY', 'YMD']).default('DMY'),
+});
+export const bankLineMatchSchema = z.strictObject({ paymentIds: z.array(id).min(1).max(100) });
+export const bankLineAdjustSchema = z.strictObject({
+  ledgerAccountId: id,
+  branchId: id,
+  memo: text,
+});
+export const reconciliationCreateSchema = z.strictObject({
+  financialAccountId: id,
+  statementDate: z.iso.date(),
+  closingBalance: decimalString,
+  // Required on an account's first reconciliation; carried forward afterwards.
+  openingBalance: decimalString.optional(),
 });

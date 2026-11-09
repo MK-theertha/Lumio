@@ -1,10 +1,20 @@
 import { runtime } from '@lumio/backend/config/runtime.js';
 import {
+  rescreenAllParties,
+  SANCTIONS_IMPORTED_EVENT,
   screenTransaction,
   type ScreenableEvent,
 } from '@lumio/backend/modules/compliance/index.js';
+import {
+  configuredScanner,
+  createObjectStore,
+  DOCUMENT_UPLOADED_EVENT,
+  scanDocument,
+} from '@lumio/backend/modules/documents/index.js';
+import { issueEInvoice } from '@lumio/backend/modules/einvoice/index.js';
 import { EMAIL_EVENT, type EmailMessage } from '@lumio/backend/modules/identity/index.js';
 import { decrypt } from '@lumio/backend/shared/crypto.js';
+import { Types } from 'mongoose';
 import { createTransport } from 'nodemailer';
 import type { EventHandler } from './queues.js';
 
@@ -34,13 +44,28 @@ function screen(trigger: ScreenableEvent['trigger']): EventHandler {
 
 export function createHandlers(): Record<string, EventHandler> {
   const transport = createTransport(runtime().SMTP_URL);
+  const screenSale = screen('SALE_POSTED');
+  const scanner = configuredScanner();
+  const store = createObjectStore(runtime());
   return {
     [EMAIL_EVENT]: async (event) => {
       const { sealed } = event.payload as { sealed: string };
       const message = JSON.parse(decrypt(sealed)) as EmailMessage;
       await transport.sendMail({ from: runtime().EMAIL_FROM, ...message });
     },
-    'sale.posted': screen('SALE_POSTED'),
+    'sale.posted': async (event) => {
+      await screenSale(event);
+      const { id } = event.payload as Payload;
+      await issueEInvoice(new Types.ObjectId(event.companyId), id);
+    },
+    [DOCUMENT_UPLOADED_EVENT]: async (event) => {
+      if (scanner) {
+        await scanDocument(event.companyId, (event.payload as Payload).id, store, scanner);
+      }
+    },
+    [SANCTIONS_IMPORTED_EVENT]: async (event) => {
+      await rescreenAllParties(new Types.ObjectId(event.companyId));
+    },
     'purchase.posted': screen('PURCHASE_POSTED'),
     'payment.posted': screen('PAYMENT_POSTED'),
   };

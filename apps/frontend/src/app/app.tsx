@@ -5,12 +5,16 @@ import { Toaster } from 'sonner';
 import { AuthProvider, useAuth } from '@/contexts/auth-context';
 import { ThemeProvider } from '@/contexts/theme-context';
 import * as accounting from '@/features/accounting/accounting-pages';
+import { BankReconciliationPage } from '@/features/accounting/bank-reconciliation-page';
 import { ForgotPasswordPage, LoginPage, SetPasswordPage } from '@/features/auth/auth-pages';
+import { GoamlReportsPage, SanctionsPage } from '@/features/compliance/compliance-pages';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
+import { DocumentsPage } from '@/features/documents/documents';
 import * as inventory from '@/features/inventory/inventory-pages';
 import * as master from '@/features/master/master-pages';
 import * as settings from '@/features/settings/settings-pages';
 import { SystemStatusPage } from '@/features/system/system-status-page';
+import { EInvoicesPage } from '@/features/trade/e-invoices-page';
 import { TradeDetailPage, TradeEditorPage, TradeListPage } from '@/features/trade/trade-pages';
 import { AppShell } from '@/layouts/app-shell';
 import { ErrorBoundary } from './error-boundary';
@@ -54,6 +58,8 @@ const guarded: [string, string, ReactNode][] = [
   ['/payments', 'payment:read', <accounting.PaymentsPage key="pay" />],
   ['/accounts', 'financial_account:read', <master.FinancialAccountsPage key="fa" />],
   ['/payment-methods', 'payment_method:read', <master.PaymentMethodsPage key="pm" />],
+  ['/bank-reconciliation', 'bank_reconciliation:read', <BankReconciliationPage key="br" />],
+  ['/e-invoices', 'einvoice:read', <EInvoicesPage key="ei" />],
   ['/journals', 'journal:read', <accounting.JournalsPage key="j" />],
   ['/chart-of-accounts', 'ledger_account:read', <master.ChartOfAccountsPage key="coa" />],
   ['/periods', 'period:read', <accounting.PeriodsPage key="per" />],
@@ -64,6 +70,9 @@ const guarded: [string, string, ReactNode][] = [
   ['/kyc', 'kyc:read', <master.KycPage key="k" />],
   ['/compliance/cases', 'compliance_case:read', <settings.ComplianceCasesPage key="cc" />],
   ['/compliance/rules', 'compliance_rule:read', <master.ComplianceRulesPage key="cr" />],
+  ['/compliance/sanctions', 'sanctions:review', <SanctionsPage key="sa" />],
+  ['/compliance/goaml', 'goaml:view', <GoamlReportsPage key="ga" />],
+  ['/documents', 'document:read', <DocumentsPage key="do" />],
   ['/branches', 'branch:read', <master.BranchesPage key="b" />],
   ['/warehouses', 'warehouse:read', <master.WarehousesPage key="w" />],
   ['/departments', 'department:read', <master.DepartmentsPage key="dp" />],

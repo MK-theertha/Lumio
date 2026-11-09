@@ -33,6 +33,7 @@ import { postJournal, type PostingLine } from '../ledger/index.js';
 import { recordAudit } from '../platform/audit/index.js';
 import { allocateNumber, type NumberingScope } from '../platform/numbering/index.js';
 import { enqueueEvent } from '../platform/outbox/index.js';
+import { assertPartyNotOnHold } from '../compliance/index.js';
 import { BranchModel } from '../organisation/index.js';
 import { recordTaxTransaction } from '../tax/index.js';
 import { priceTrade, type Direction, type TradeInput } from './pricing.service.js';
@@ -404,6 +405,7 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
     if (doc.status !== 'DRAFT' && doc.status !== 'APPROVED') {
       throw new ConflictError('This document cannot be posted in its current state.');
     }
+    await assertPartyNotOnHold(tx, doc.partyId);
     const label = LABEL[direction];
     const number = await nextNumber(tx, company, label.series, doc.branchId, doc.docDate);
     const { lines, cost } = await moveStock(tx, direction, doc, company);

@@ -31,6 +31,23 @@ const envSchema = z
     APP_URL: z.url().default('http://localhost:5173'),
     SMTP_URL: z.string().default('smtp://localhost:1025'),
     EMAIL_FROM: z.string().default('Lumio <no-reply@lumio.local>'),
+    // Omit the endpoint for AWS S3; set it for an S3-compatible store.
+    S3_ENDPOINT: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.url().optional()),
+    S3_REGION: z.string().default('us-east-1'),
+    S3_BUCKET: z.string().min(1).default('lumio-documents'),
+    S3_ACCESS_KEY_ID: z.string().optional(),
+    S3_SECRET_ACCESS_KEY: z.string().optional(),
+    // Without a scanner, uploads are marked as not scanned. Refused in staging and production.
+    CLAMAV_HOST: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined),
+    CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+    EINVOICE_PROVIDER: z.enum(['none', 'simulated']).default('none'),
   })
   .superRefine((env, issue) => {
     if (env.NODE_ENV !== 'production' && env.NODE_ENV !== 'staging') return;
@@ -42,6 +59,20 @@ const envSchema = z
           message: 'Development secret is not allowed',
         });
       }
+    }
+    if (!env.CLAMAV_HOST) {
+      issue.addIssue({
+        code: 'custom',
+        path: ['CLAMAV_HOST'],
+        message: 'A malware scanner is required',
+      });
+    }
+    if (env.EINVOICE_PROVIDER === 'simulated') {
+      issue.addIssue({
+        code: 'custom',
+        path: ['EINVOICE_PROVIDER'],
+        message: 'The simulated provider is not allowed',
+      });
     }
   });
 

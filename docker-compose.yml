@@ -14,6 +14,13 @@ x-node-env: &node-env
   ENCRYPTION_KEY: dev-only-encryption-0123456789abcdef
   BLIND_INDEX_KEY: dev-only-blind-index-0123456789abcde
   SMTP_URL: smtp://mailpit:1025
+  S3_ENDPOINT: http://object-storage:8333
+  S3_ACCESS_KEY_ID: dev-only-access-key
+  S3_SECRET_ACCESS_KEY: dev-only-secret-key
+  # Local stand-in only; the application refuses it in staging and production.
+  EINVOICE_PROVIDER: simulated
+  # Start the scanner with --profile scan, then set this to clamav.
+  CLAMAV_HOST: ${CLAMAV_HOST:-}
 
 x-backend-build: &backend-build
   context: .
@@ -76,7 +83,10 @@ services:
     # S3-compatible store for local development (SeaweedFS).
     image: chrislusf/seaweedfs:latest
     command: ['server', '-dir=/data', '-s3', '-s3.port=8333']
-    ports: ['127.0.0.1:8333:8333']
+    environment:
+      AWS_ACCESS_KEY_ID: dev-only-access-key
+      AWS_SECRET_ACCESS_KEY: dev-only-secret-key
+    ports: ['127.0.0.1:${S3_HOST_PORT:-8333}:8333']
     volumes: ['object-storage-data:/data']
 
   mailpit:

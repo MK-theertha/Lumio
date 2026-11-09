@@ -132,6 +132,24 @@ export async function fetchReadiness<T>(): Promise<T> {
   return response.data.data;
 }
 
+/** Sends a file as the raw request body, with its details in the query string. */
+export async function apiUpload<T>(url: string, file: Blob | string, params: object): Promise<T> {
+  const response = await http.post<ApiSuccess<T>>(url, file, {
+    params,
+    headers: { 'Content-Type': 'application/octet-stream' },
+  });
+  return response.data.data;
+}
+
+export async function downloadFile(url: string, filename: string): Promise<void> {
+  const response = await http.get<Blob>(url, { responseType: 'blob' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(response.data);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 export async function downloadCsv(url: string, filename: string, params?: object): Promise<void> {
   const response = await http.get<Blob>(url, {
     params: { ...params, format: 'csv' },

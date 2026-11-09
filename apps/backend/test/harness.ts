@@ -26,6 +26,9 @@ export const testEnv = loadEnv({
   JWT_ACCESS_SECRET: 'dev-only-jwt-secret-0123456789abcdef',
   ENCRYPTION_KEY: 'dev-only-encryption-0123456789abcdef',
   BLIND_INDEX_KEY: 'dev-only-blind-index-0123456789abcde',
+  S3_ENDPOINT: process.env.TEST_S3_ENDPOINT,
+  S3_ACCESS_KEY_ID: 'test',
+  S3_SECRET_ACCESS_KEY: 'test',
 });
 
 export async function startTestDatabase(): Promise<void> {

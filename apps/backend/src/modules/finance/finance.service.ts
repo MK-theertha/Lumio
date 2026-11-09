@@ -9,6 +9,7 @@ import {
 } from '../../shared/context.js';
 import { d128, dec, Decimal } from '../../shared/decimal.js';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../shared/errors.js';
+import { assertPartyNotOnHold } from '../compliance/index.js';
 import { postJournal, reverseJournal } from '../ledger/index.js';
 import { PartyModel } from '../master/index.js';
 import { recordAudit } from '../platform/audit/index.js';
@@ -22,6 +23,7 @@ import {
   PaymentMethodModel,
   PaymentModel,
 } from './finance.models.js';
+import { BankMatchModel } from './reconciliation.js';
 
 type Id = Types.ObjectId | string;
 export type Side = 'RECEIVABLE' | 'PAYABLE';
@@ -142,6 +144,7 @@ export async function recordPayment(ctx: RequestContext, input: PaymentInput) {
     assertTransactional(tx, 'recordPayment');
     const amount = dec(input.amount);
     if (amount.lessThanOrEqualTo(0)) throw new BusinessRuleError('The amount must be positive.');
+    await assertPartyNotOnHold(tx, input.partyId);
     const side: Side = input.side ?? (input.direction === 'RECEIPT' ? 'RECEIVABLE' : 'PAYABLE');
     // Sequential: a MongoDB transaction cannot run operations in parallel on one session.
     const account = await FinancialAccountModel.findOne({
@@ -261,6 +264,11 @@ export async function recordPayment(ctx: RequestContext, input: PaymentInput) {
 
 export function reversePayment(ctx: RequestContext, id: string, reason: string) {
   return runInTransaction(ctx, async (tx) => {
+    if (
+      await BankMatchModel.findOne({ companyId: tx.companyId, paymentId: id }).session(tx.session)
+    ) {
+      throw new ConflictError('This payment has cleared the bank. Unmatch it before reversing.');
+    }
     const payment = await PaymentModel.findOneAndUpdate(
       { companyId: tx.companyId, _id: id, status: 'POSTED' },
       { $set: { status: 'REVERSED' } },

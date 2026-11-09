@@ -13,6 +13,8 @@ import { NotFoundError } from '../../shared/errors.js';
 import { PartyModel } from '../master/index.js';
 import { recordAudit } from '../platform/audit/index.js';
 
+export * from './sanctions.js';
+
 const kycSchema = tenantSchema(
   'kycRecords',
   {

@@ -150,3 +150,52 @@ test('buy gold, sell it, take payment, and see it in the books', async ({ page }
   await page.goto('/reports');
   await expect(page.getByRole('cell').first()).toBeVisible();
 });
+
+test('attach a document, screen a party, and reach the banking and filing pages', async ({
+  page,
+}) => {
+  await signIn(page);
+  const dialog = page.getByRole('dialog');
+  const listed = `Zoltan Vexmoor ${suffix}`;
+
+  await page.goto('/compliance/sanctions');
+  await page.getByLabel('Format').selectOption('CSV');
+  await page.getByLabel('List name').fill(`E2E${suffix}`);
+  await page.getByLabel('List file').setInputFiles({
+    name: 'list.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(`externalId,name,aliases,type\nE${suffix},${listed},,INDIVIDUAL\n`),
+  });
+  await expect(page.getByText(/Imported 1 entries/)).toBeVisible();
+
+  await newRecord(page, '/customers', async () => {
+    await dialog.getByLabel('Code').fill(`Z${suffix}`);
+    await dialog.getByLabel('Name', { exact: true }).fill(listed);
+  });
+  await page.goto('/compliance/sanctions');
+  await expect(page.getByRole('cell', { name: listed }).first()).toBeVisible();
+
+  await page.goto('/documents');
+  await page.getByLabel('Record').selectOption({ label: `Z${suffix} ${listed}` });
+  await page.getByLabel(/^File/).setInputFiles({
+    name: 'licence.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7\nE2E\n%%EOF'),
+  });
+  await expect(page.getByRole('cell', { name: 'licence.pdf' })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download' }).first().click();
+  expect((await download).suggestedFilename()).toBe('licence.pdf');
+
+  await page.goto('/bank-reconciliation');
+  await expect(page.getByLabel('Bank account')).toHaveValue(/.+/);
+  await page.getByLabel('Dates in the file are').selectOption('YMD');
+  await page.getByLabel('Statement file (CSV)').setInputFiles({
+    name: 'statement.csv',
+    mimeType: 'text/csv',
+    buffer: Buffer.from(
+      `Date,Description,Amount\n2026-11-01,E2E ${suffix},-${suffix.slice(0, 2)}.50\n`,
+    ),
+  });
+  await expect(page.getByRole('cell', { name: `E2E ${suffix}` })).toBeVisible();
+});

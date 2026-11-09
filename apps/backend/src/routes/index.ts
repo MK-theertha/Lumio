@@ -9,9 +9,14 @@ import { RoleModel } from '../modules/access/index.js';
 import {
   ComplianceRuleModel,
   createComplianceCaseRouter,
+  createSanctionsRouter,
   KycRecordModel,
+  screenParty,
 } from '../modules/compliance/index.js';
+import { createDocumentRouter } from '../modules/documents/index.js';
+import { createEInvoiceRouter } from '../modules/einvoice/index.js';
 import {
+  createBankReconciliationRouter,
   FinancialAccountModel,
   OpenItemModel,
   PartyBalanceModel,
@@ -21,6 +26,7 @@ import {
   reversePayment,
   type PaymentInput,
 } from '../modules/finance/index.js';
+import { createGoamlRouter } from '../modules/goaml/index.js';
 import { createAuthRouter, createUsersRouter, UserModel } from '../modules/identity/index.js';
 import * as inventory from '../modules/inventory/index.js';
 import {
@@ -128,7 +134,8 @@ function masterRoutes(router: Router): void {
     update: v.partySchema.partial(),
     searchFields: ['code', 'name', 'phone'],
     sortable: ['code', 'name'],
-    filters: ['roles', 'kycStatus', 'riskLevel'],
+    filters: ['roles', 'kycStatus', 'riskLevel', 'sanctionsStatus'],
+    afterSave: (partyId, req) => screenParty(req.ctx.companyId, partyId),
   });
   mount('/party-pricing', {
     model: PartyPricingModel,
@@ -708,6 +715,11 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.use('/sales-invoices', createTradeRouter('SALE'));
   router.use('/purchase-invoices', createTradeRouter('PURCHASE'));
   router.use('/compliance-cases', createComplianceCaseRouter());
+  router.use('/sanctions', createSanctionsRouter());
+  router.use('/goaml-reports', createGoamlRouter());
+  router.use('/documents', createDocumentRouter());
+  router.use('/e-invoices', createEInvoiceRouter());
+  router.use(createBankReconciliationRouter());
   router.use(createReportingRouter());
   return router;
 }

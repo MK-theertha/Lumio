@@ -10,10 +10,13 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
+import { ConflictError } from '../../shared/errors.js';
 import { sendSuccess } from '../../shared/http.js';
 import { idempotencyKeyOf } from '../../shared/idempotent-route.js';
 import { plain } from '../../shared/serialize.js';
+import { CompanyModel } from '../organisation/index.js';
 import { executeIdempotent } from '../platform/idempotency/index.js';
+import { renderInvoicePdf, type PdfCompany, type PdfInvoice } from './invoice-pdf.js';
 import type { Direction, TradeInput } from './pricing.service.js';
 import {
   createDraft,
@@ -90,6 +93,21 @@ export function createTradeRouter(direction: Direction): Router {
   router.get('/:id', allow('read'), idParams, async (req, res) => {
     const doc = await getDocument(req.ctx, direction, id(req));
     sendSuccess(req, res, maskCost(doc as Record<string, unknown>, req));
+  });
+
+  router.get('/:id/pdf', allow('read'), idParams, async (req, res) => {
+    const doc = (await getDocument(req.ctx, direction, id(req))) as unknown as PdfInvoice;
+    if (!doc.number) throw new ConflictError('Only a posted invoice can be issued as a PDF.');
+    const company = (await CompanyModel.findById(req.ctx.companyId).lean()) as PdfCompany;
+    const pdf = await renderInvoicePdf(doc, company, direction);
+    res
+      .status(200)
+      .set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="${doc.number}.pdf"`,
+        'Cache-Control': 'no-store',
+      })
+      .send(pdf);
   });
 
   router.post('/', allow('create'), validate({ body: tradeDocumentSchema }), async (req, res) => {
