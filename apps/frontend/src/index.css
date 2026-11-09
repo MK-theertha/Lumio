@@ -1,0 +1,64 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: oklch(0.985 0.002 90);
+  --foreground: oklch(0.21 0.01 80);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.01 80);
+  --muted: oklch(0.955 0.004 90);
+  --muted-foreground: oklch(0.5 0.012 80);
+  --border: oklch(0.91 0.005 90);
+  --primary: oklch(0.56 0.11 80);
+  --primary-foreground: oklch(0.99 0.005 90);
+  --destructive: oklch(0.55 0.2 27);
+  --success: oklch(0.55 0.13 150);
+  --ring: oklch(0.56 0.11 80);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.17 0.006 80);
+  --foreground: oklch(0.94 0.005 90);
+  --card: oklch(0.21 0.007 80);
+  --card-foreground: oklch(0.94 0.005 90);
+  --muted: oklch(0.26 0.007 80);
+  --muted-foreground: oklch(0.7 0.01 85);
+  --border: oklch(0.3 0.008 80);
+  --primary: oklch(0.76 0.12 85);
+  --primary-foreground: oklch(0.2 0.02 80);
+  --destructive: oklch(0.66 0.19 25);
+  --success: oklch(0.72 0.15 150);
+  --ring: oklch(0.76 0.12 85);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-ring: var(--ring);
+  --radius-md: var(--radius);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: 'tnum';
+    margin: 0;
+  }
+}

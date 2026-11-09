@@ -1,0 +1,23 @@
+{
+  "name": "@lumio/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --tsconfig tsconfig.json src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@lumio/backend": "*",
+    "@sentry/node": "11.11.0",
+    "bullmq": "6.7.2",
+    "ioredis": "6.0.0",
+    "mongoose": "9.12.0",
+    "nodemailer": "10.4.0",
+    "pino": "10.4.0"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "8.0.2"
+  }
+}

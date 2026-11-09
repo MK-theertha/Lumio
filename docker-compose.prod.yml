@@ -1,0 +1,41 @@
+# Production application services. MongoDB and Redis are external, supplied via the env file:
+# a single-container database is not acceptable for production.
+# Image references must be digests, set by the deployment workflow.
+
+x-app: &app
+  env_file: ${LUMIO_ENV_FILE:?Set LUMIO_ENV_FILE to the environment file}
+  restart: unless-stopped
+  read_only: true
+  tmpfs: ['/tmp']
+  security_opt: ['no-new-privileges:true']
+  cap_drop: ['ALL']
+
+services:
+  migrate:
+    <<: *app
+    image: ${API_IMAGE:?Set API_IMAGE}
+    restart: 'no'
+    command: ['node', 'apps/backend/dist/database/migrate.js']
+    healthcheck: { disable: true }
+    # Runs under a privileged credential the application does not hold.
+    environment:
+      MONGODB_URI: ${MIGRATION_MONGODB_URI:?Set MIGRATION_MONGODB_URI}
+
+  api:
+    <<: *app
+    image: ${API_IMAGE}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *app
+    image: ${WORKER_IMAGE:?Set WORKER_IMAGE}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE}
+    restart: unless-stopped
+    ports: ['${HTTP_BIND:-127.0.0.1:8080}:8080']
+    depends_on:
+      api: { condition: service_healthy }

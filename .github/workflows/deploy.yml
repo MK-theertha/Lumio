@@ -1,0 +1,34 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      environment: { type: string, required: true }
+      api_image: { type: string, required: true }
+      worker_image: { type: string, required: true }
+      frontend_image: { type: string, required: true }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Deploy, verify and roll back on failure
+        env:
+          DEPLOY_TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          HEALTH_URL: ${{ vars.HEALTH_URL }}
+          API_IMAGE: ${{ inputs.api_image }}
+          WORKER_IMAGE: ${{ inputs.worker_image }}
+          FRONTEND_IMAGE: ${{ inputs.frontend_image }}
+        run: infrastructure/deploy/deploy.sh

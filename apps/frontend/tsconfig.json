@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "types": ["vite/client", "@testing-library/jest-dom"],
+    "paths": {
+      "@/*": ["./src/*"],
+      "@lumio/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@lumio/validation": ["../../packages/validation/src/index.ts"],
+      "@lumio/calc-engine": ["../../packages/calc-engine/src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

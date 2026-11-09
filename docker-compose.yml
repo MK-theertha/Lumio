@@ -1,0 +1,170 @@
+# Development stack. Start with: docker compose up --build
+# Published ports bind to localhost only. These services have no credentials and are for local use.
+
+x-node-env: &node-env
+  NODE_ENV: development
+  LOG_LEVEL: info
+  MONGODB_URI: mongodb://mongo:27017/lumio?replicaSet=rs0
+  REDIS_CACHE_URL: redis://redis-cache:6379
+  REDIS_QUEUE_URL: redis://redis-queue:6379
+  CORS_ORIGINS: http://localhost:${FRONTEND_HOST_PORT:-5173}
+  APP_URL: http://localhost:${FRONTEND_HOST_PORT:-5173}
+  # Development-only values; the application refuses them in staging and production.
+  JWT_ACCESS_SECRET: dev-only-jwt-secret-0123456789abcdef
+  ENCRYPTION_KEY: dev-only-encryption-0123456789abcdef
+  BLIND_INDEX_KEY: dev-only-blind-index-0123456789abcde
+  SMTP_URL: smtp://mailpit:1025
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: apps/backend/Dockerfile
+  target: dev
+
+x-backend-volumes: &backend-volumes
+  - ./apps/backend/src:/app/apps/backend/src:ro
+  - ./apps/worker/src:/app/apps/worker/src:ro
+  - ./packages/shared-types/src:/app/packages/shared-types/src:ro
+  - ./packages/shared-utils/src:/app/packages/shared-utils/src:ro
+  - ./packages/validation/src:/app/packages/validation/src:ro
+  - ./packages/calc-engine/src:/app/packages/calc-engine/src:ro
+
+services:
+  mongo:
+    image: mongo:8.0
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports: ['127.0.0.1:${MONGO_HOST_PORT:-27017}:27017']
+    volumes: ['mongo-data:/data/db']
+    healthcheck:
+      # Initiates the replica set on first run; transactions require one.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - >-
+          try { rs.status().ok } catch (e) {
+          rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }
+          ; if (!db.hello().isWritablePrimary) quit(1)
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+
+  redis-cache:
+    image: redis:7-alpine
+    command: ['redis-server', '--maxmemory', '256mb', '--maxmemory-policy', 'allkeys-lru']
+    ports: ['127.0.0.1:${REDIS_CACHE_HOST_PORT:-6379}:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-queue:
+    image: redis:7-alpine
+    # BullMQ requires noeviction, and queued jobs must survive a restart.
+    command: ['redis-server', '--maxmemory-policy', 'noeviction', '--appendonly', 'yes']
+    ports: ['127.0.0.1:${REDIS_QUEUE_HOST_PORT:-6380}:6379']
+    volumes: ['redis-queue-data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  object-storage:
+    # S3-compatible store for local development (SeaweedFS).
+    image: chrislusf/seaweedfs:latest
+    command: ['server', '-dir=/data', '-s3', '-s3.port=8333']
+    ports: ['127.0.0.1:8333:8333']
+    volumes: ['object-storage-data:/data']
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ['127.0.0.1:1025:1025', '127.0.0.1:8025:8025']
+
+  clamav:
+    # Large download with slow signature loading: enable with --profile scan.
+    profiles: ['scan']
+    image: clamav/clamav:stable
+    ports: ['127.0.0.1:3310:3310']
+
+  seed:
+    # Demo data for local development. The script refuses to run in production.
+    profiles: ['seed']
+    build: *backend-build
+    command: ['npx', 'tsx', '--tsconfig', 'tsconfig.json', 'apps/backend/src/database/seed.ts']
+    environment: *node-env
+    volumes: *backend-volumes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  migrate:
+    build: *backend-build
+    command: ['npx', 'tsx', '--tsconfig', 'tsconfig.json', 'apps/backend/src/database/migrate.ts']
+    environment: *node-env
+    volumes: *backend-volumes
+    depends_on:
+      mongo: { condition: service_healthy }
+
+  api:
+    build: *backend-build
+    command: ['npx', 'tsx', 'watch', '--tsconfig', 'tsconfig.json', 'apps/backend/src/server.ts']
+    environment: { <<: *node-env, PORT: 4000 }
+    ports: ['127.0.0.1:${API_HOST_PORT:-4000}:4000']
+    volumes: *backend-volumes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis-cache: { condition: service_healthy }
+      redis-queue: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/healthz/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  worker:
+    build: *backend-build
+    command: ['npx', 'tsx', 'watch', '--tsconfig', 'tsconfig.json', 'apps/worker/src/main.ts']
+    environment: { <<: *node-env, WORKER_HEALTH_PORT: 4001 }
+    volumes: *backend-volumes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis-queue: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4001/healthz/ready').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: dev
+    command: ['npm', 'run', 'dev', '-w', '@lumio/frontend']
+    environment:
+      VITE_PROXY_TARGET: http://api:4000
+    ports: ['127.0.0.1:${FRONTEND_HOST_PORT:-5173}:5173']
+    volumes:
+      - ./apps/frontend/src:/app/apps/frontend/src:ro
+      - ./packages/shared-types/src:/app/packages/shared-types/src:ro
+      - ./packages/validation/src:/app/packages/validation/src:ro
+      - ./packages/calc-engine/src:/app/packages/calc-engine/src:ro
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  mongo-data:
+  redis-queue-data:
+  object-storage-data:

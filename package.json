@@ -1,0 +1,45 @@
+{
+  "name": "lumio",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:stack": "docker compose up --build",
+    "build:packages": "npm run build -w @lumio/shared-types -w @lumio/shared-utils -w @lumio/validation -w @lumio/calc-engine",
+    "build": "npm run build:packages && npm run build -w @lumio/backend -w @lumio/worker -w @lumio/frontend",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/frontend/tsconfig.json",
+    "boundaries": "depcruise packages apps --config .dependency-cruiser.cjs",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit --project frontend",
+    "test:integration": "vitest run --project integration",
+    "openapi:generate": "tsx --tsconfig tsconfig.json apps/backend/src/routes/generate-openapi.ts",
+    "openapi:check": "tsx --tsconfig tsconfig.json apps/backend/src/routes/generate-openapi.ts --check"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.20.5",
+    "@vitest/coverage-v8": "5.1.0",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "fast-check": "4.10.2",
+    "globals": "17.14.0",
+    "jsdom": "31.0.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "5.1.0"
+  }
+}
