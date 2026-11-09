@@ -1,6 +1,6 @@
 # Lumio
 
-An enterprise ERP for gold traders, jewellers and bullion dealers, built on the MERN stack with TypeScript.
+An enterprise ERP for traders, jewellers and bullion dealers, built on the MERN stack with TypeScript.
 
 **Status: core ERP working in development; not production ready.**
 See the [production readiness checklist](docs/production-readiness.md) for what is and is not done.
@@ -29,7 +29,7 @@ Create a demo company (development only, shown with a banner in the app):
 docker compose --profile seed run --rm seed
 ```
 
-Sign in as `admin@demo.lumio.local` with `demo-only-change-me`. Before transacting, set up purities, products, tax codes, tax rules and a gold rate.
+Sign in as `admin@demo.lumio.local` with `demo-only-change-me`. Before transacting, set up purities, products, tax codes, tax rules.
 
 If a port is already in use on your machine, override it when starting:
 `MONGO_HOST_PORT`, `REDIS_CACHE_HOST_PORT`, `REDIS_QUEUE_HOST_PORT`, `API_HOST_PORT`, `FRONTEND_HOST_PORT`.
@@ -58,7 +58,7 @@ The application validates its configuration at startup and refuses to start if a
 apps/frontend         React SPA
 apps/backend          Express API and domain modules
 apps/worker           Background jobs and the outbox relay
-packages/calc-engine  Gold, tax and settlement arithmetic
+packages/calc-engine  tax and settlement arithmetic
 packages/validation   Zod schemas: the API contract
 packages/shared-types Shared TypeScript types
 packages/shared-utils Shared helpers
