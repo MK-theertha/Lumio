@@ -13,6 +13,7 @@ import { createHealthRouter, type HealthCheck } from './modules/health/index.js'
 import { createApiRouter } from './routes/index.js';
 import { buildOpenApiDocument } from './routes/openapi.js';
 import type { Logger } from './shared/logger.js';
+import { httpMetrics } from './shared/metrics.js';
 
 export interface AppDependencies {
   env: Pick<Env, 'NODE_ENV' | 'CORS_ORIGINS' | 'TRUST_PROXY_HOPS'>;
@@ -31,6 +32,7 @@ export function createApp(deps: AppDependencies): Express {
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
   app.use(correlationId);
+  app.use(httpMetrics());
   app.use(
     pinoHttp({
       logger,

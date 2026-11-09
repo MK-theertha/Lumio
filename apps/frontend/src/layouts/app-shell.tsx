@@ -24,6 +24,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/auth-context';
 import { useTheme } from '@/contexts/theme-context';
+import { NotificationBell } from '@/features/notifications/notifications';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -122,6 +123,7 @@ const NAV: NavGroup[] = [
       { to: '/compliance/goaml', label: 'goAML reports', permission: 'goaml:view' },
       { to: '/documents', label: 'Documents', permission: 'document:read' },
       { to: '/audit-log', label: 'Audit log', permission: 'audit:read' },
+      { to: '/integrity', label: 'Integrity checks', permission: 'audit:read' },
     ],
   },
   {
@@ -248,6 +250,7 @@ export function AppShell() {
           </Button>
           <div className="ms-auto flex items-center gap-2">
             <span className="hidden text-sm text-muted-foreground sm:inline">{user?.name}</span>
+            <NotificationBell />
             <Button
               variant="ghost"
               size="icon"

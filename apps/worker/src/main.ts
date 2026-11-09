@@ -6,8 +6,9 @@ import {
   disconnectDatabase,
   pingDatabase,
 } from '@lumio/backend/database/connection.js';
-import { OutboxRelay } from '@lumio/backend/modules/platform/outbox/index.js';
+import { OutboxEventModel, OutboxRelay } from '@lumio/backend/modules/platform/outbox/index.js';
 import { createLogger } from '@lumio/backend/shared/logger.js';
+import { observeGauge, startMetrics } from '@lumio/backend/shared/metrics.js';
 import * as Sentry from '@sentry/node';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -16,6 +17,7 @@ import {
   createEventWorker,
   createPublisher,
   DOMAIN_EVENTS_QUEUE,
+  scheduleNightlyMaintenance,
   type EventQueue,
 } from './queues.js';
 
@@ -30,9 +32,16 @@ const connection = new Redis(env.REDIS_QUEUE_URL, { maxRetriesPerRequest: null }
 connection.on('error', (error) => logger.error({ err: error }, 'Redis connection error'));
 
 const queue: EventQueue = new Queue(DOMAIN_EVENTS_QUEUE, { connection });
-const { worker, deadLetters } = createEventWorker(connection, createHandlers(), logger);
+const { worker, deadLetters } = createEventWorker(connection, createHandlers(logger), logger);
 const relay = new OutboxRelay(createPublisher(queue), logger);
 relay.start();
+await scheduleNightlyMaintenance(queue);
+startMetrics(env.METRICS_PORT);
+observeGauge('queue_waiting', () => queue.getWaitingCount());
+observeGauge('queue_dead_letters', () =>
+  deadLetters.getJobCounts('waiting').then((c) => c.waiting ?? 0),
+);
+observeGauge('outbox_pending', () => OutboxEventModel.countDocuments({ status: 'PENDING' }));
 
 const health = createServer((req, res) => {
   if (req.url !== '/healthz/ready') {

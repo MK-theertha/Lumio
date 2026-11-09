@@ -48,6 +48,14 @@ const envSchema = z
       .transform((value) => value || undefined),
     CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
     EINVOICE_PROVIDER: z.enum(['none', 'simulated']).default('none'),
+    // Prometheus port for this process. Never exposed through the public proxy.
+    METRICS_PORT: z.coerce.number().int().positive().optional(),
+    // Where the nightly job fetches the UN list. Empty disables the refresh.
+    SANCTIONS_UN_URL: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.url().optional()),
   })
   .superRefine((env, issue) => {
     if (env.NODE_ENV !== 'production' && env.NODE_ENV !== 'staging') return;

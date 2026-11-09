@@ -55,6 +55,7 @@ const partyFields: FieldSpec[] = [
   { name: 'phone', label: 'Phone' },
   { name: 'taxRegistrationNumber', label: 'Tax registration number' },
   { name: 'dateOfBirth', label: 'Date of birth (YYYY-MM-DD)' },
+  { name: 'beneficialOwners', label: 'Beneficial owners (separate with ;)', type: 'list' },
   { name: 'nationality', label: 'Nationality (for example AE)' },
   { name: 'vatRegistered', label: 'VAT registered', type: 'checkbox' },
   { name: 'billingAddress', label: 'Billing address' },

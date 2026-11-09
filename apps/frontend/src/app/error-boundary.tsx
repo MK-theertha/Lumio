@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
+import { reportClientError } from '@/lib/report-error';
+
 interface State {
   failed: boolean;
 }
@@ -12,8 +14,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    // eslint-disable-next-line no-console -- browser error reporting is wired to Sentry in Phase 10
-    console.error(error, info.componentStack);
+    reportClientError(error, info.componentStack ?? undefined);
   }
 
   override render(): ReactNode {

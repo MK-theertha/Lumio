@@ -12,6 +12,7 @@ import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { DocumentsPage } from '@/features/documents/documents';
 import * as inventory from '@/features/inventory/inventory-pages';
 import * as master from '@/features/master/master-pages';
+import { IntegrityPage, NotificationsPage } from '@/features/notifications/notifications';
 import { PlatformCompaniesPage } from '@/features/platform/platform-companies-page';
 import * as settings from '@/features/settings/settings-pages';
 import { SystemStatusPage } from '@/features/system/system-status-page';
@@ -76,6 +77,7 @@ const guarded: [string, string, ReactNode][] = [
   ['/compliance/sanctions', 'sanctions:review', <SanctionsPage key="sa" />],
   ['/compliance/goaml', 'goaml:view', <GoamlReportsPage key="ga" />],
   ['/documents', 'document:read', <DocumentsPage key="do" />],
+  ['/integrity', 'audit:read', <IntegrityPage key="in" />],
   ['/branches', 'branch:read', <master.BranchesPage key="b" />],
   ['/warehouses', 'warehouse:read', <master.WarehousesPage key="w" />],
   ['/departments', 'department:read', <master.DepartmentsPage key="dp" />],
@@ -108,6 +110,7 @@ export function App() {
                       />
                     ))}
                     <Route path="/platform/companies" element={<PlatformCompaniesPage />} />
+                    <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="/security" element={<settings.SecurityPage />} />
                     <Route path="/system-status" element={<SystemStatusPage />} />
                     <Route path="*" element={<p className="text-sm">Page not found.</p>} />

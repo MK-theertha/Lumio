@@ -27,6 +27,7 @@ const partySchema = tenantSchema(
     creditLimit: D128,
     notes: String,
     dateOfBirth: String,
+    beneficialOwners: { type: [String], default: [] },
     nationality: String,
     kycStatus: { type: String, default: 'NONE' },
     sanctionsStatus: {

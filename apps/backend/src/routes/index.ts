@@ -1,9 +1,11 @@
 import * as v from '@lumio/validation';
+import * as Sentry from '@sentry/node';
 import { Router, type Request } from 'express';
 import type { Redis } from 'ioredis';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 import { authenticate, requirePermission } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { validate } from '../middleware/validate.js';
 import { RoleModel } from '../modules/access/index.js';
 import {
@@ -27,6 +29,8 @@ import {
   type PaymentInput,
 } from '../modules/finance/index.js';
 import { createGoamlRouter } from '../modules/goaml/index.js';
+import { createIntegrityRouter } from '../modules/maintenance/index.js';
+import { createNotificationRouter } from '../modules/notifications/index.js';
 import { createAuthRouter, createUsersRouter, UserModel } from '../modules/identity/index.js';
 import * as inventory from '../modules/inventory/index.js';
 import {
@@ -263,7 +267,11 @@ function organisationRoutes(router: Router): void {
     validate({ params: z.object({ id: v.objectIdSchema }), body: v.roleSchema }),
     async (req, res) => {
       const input = body<z.infer<typeof v.roleSchema>>(req);
-      await RoleModel.updateOne({ companyId: req.ctx.companyId, _id: id(req) }, { $set: input });
+      const updated = await RoleModel.updateOne(
+        { companyId: req.ctx.companyId, _id: id(req) },
+        { $set: input },
+      );
+      if (updated.matchedCount === 0) throw new NotFoundError();
       await recordAudit(req.ctx, {
         action: 'role.update',
         entityType: 'role',
@@ -680,6 +688,25 @@ export interface ApiDeps {
 export function createApiRouter(deps: ApiDeps): Router {
   const router = Router();
   router.use('/auth', createAuthRouter(deps));
+  // Before authentication: a crash can happen on the sign-in page or with an expired session.
+  router.post(
+    '/client-errors',
+    rateLimit({
+      redis: deps.redis,
+      logger: deps.logger,
+      name: 'client-errors',
+      limit: 30,
+      windowMs: 60_000,
+      onStoreFailure: 'allow',
+    }),
+    validate({ body: v.clientErrorSchema }),
+    (req, res) => {
+      const report = body<z.infer<typeof v.clientErrorSchema>>(req);
+      deps.logger.warn({ clientError: report, correlationId: req.correlationId }, 'Browser error');
+      Sentry.captureMessage(`Browser error: ${report.message}`, { extra: report });
+      res.status(204).end();
+    },
+  );
   router.use(authenticate);
 
   const assertPlatformAdmin = async (req: Request) => {
@@ -734,6 +761,8 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.use('/goaml-reports', createGoamlRouter());
   router.use('/documents', createDocumentRouter());
   router.use('/e-invoices', createEInvoiceRouter());
+  router.use('/notifications', createNotificationRouter());
+  router.use('/integrity-runs', createIntegrityRouter());
   router.use(createBankReconciliationRouter());
   router.use(createReportingRouter());
   return router;

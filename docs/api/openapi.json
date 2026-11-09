@@ -1186,6 +1186,63 @@
         }
       }
     },
+    "/api/v1/client-errors": {
+      "post": {
+        "tags": [
+          "client-errors"
+        ],
+        "summary": "POST /client-errors",
+        "description": "Authentication: none. Permissions: none.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "stack": {
+                    "type": "string",
+                    "maxLength": 10000
+                  },
+                  "componentStack": {
+                    "type": "string",
+                    "maxLength": 10000
+                  },
+                  "path": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/company": {
       "get": {
         "tags": [
@@ -3160,6 +3217,54 @@
         }
       }
     },
+    "/api/v1/integrity-runs": {
+      "get": {
+        "tags": [
+          "integrity-runs"
+        ],
+        "summary": "GET /integrity-runs",
+        "description": "Authentication: bearer token. Permissions: audit:read.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "integrity-runs"
+        ],
+        "summary": "POST /integrity-runs",
+        "description": "Authentication: bearer token. Permissions: settings:manage.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/journal-drafts": {
       "get": {
         "tags": [
@@ -3911,6 +4016,66 @@
         }
       }
     },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "GET /notifications",
+        "description": "Authentication: bearer token. Permissions: none.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "POST /notifications/:id/read",
+        "description": "Authentication: bearer token. Permissions: none.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/open-items": {
       "get": {
         "tags": [
@@ -4048,6 +4213,15 @@
                     "type": "string",
                     "minLength": 2,
                     "maxLength": 2
+                  },
+                  "beneficialOwners": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
                   }
                 },
                 "required": [
@@ -4243,6 +4417,15 @@
                     "type": "string",
                     "minLength": 2,
                     "maxLength": 2
+                  },
+                  "beneficialOwners": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
                   }
                 },
                 "additionalProperties": false

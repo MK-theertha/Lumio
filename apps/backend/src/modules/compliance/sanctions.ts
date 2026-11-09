@@ -54,6 +54,8 @@ const matchSchema = tenantSchema(
   'sanctionsMatches',
   {
     partyId: ROID,
+    // PARTY, or the name of the beneficial owner who matched.
+    subject: { type: String, required: true, default: 'PARTY' },
     screenedName: RS,
     source: RS,
     externalId: RS,
@@ -72,7 +74,10 @@ const matchSchema = tenantSchema(
   },
   { timestamps: true },
 );
-matchSchema.index({ companyId: 1, partyId: 1, source: 1, externalId: 1 }, { unique: true });
+matchSchema.index(
+  { companyId: 1, partyId: 1, source: 1, externalId: 1, subject: 1 },
+  { unique: true },
+);
 matchSchema.index({ companyId: 1, status: 1, _id: -1 });
 export const SanctionsMatchModel = tenantModel('SanctionsMatch', matchSchema);
 
@@ -106,12 +111,13 @@ async function refreshStatus(companyId: Types.ObjectId, partyId: Types.ObjectId)
   );
 }
 
-async function screenAgainst(
+async function screenName(
   companyId: Types.ObjectId,
-  party: { _id: Types.ObjectId; name: string },
+  partyId: Types.ObjectId,
+  screened: { subject: string; name: string },
   entries: Entry[],
 ): Promise<number> {
-  const name = normaliseName(party.name);
+  const name = normaliseName(screened.name);
   let found = 0;
   for (const entry of entries) {
     let score = 0;
@@ -127,9 +133,10 @@ async function screenAgainst(
     found += 1;
     const key = {
       companyId,
-      partyId: party._id,
+      partyId,
       source: entry.source,
       externalId: entry.externalId,
+      subject: screened.subject,
     };
     await SanctionsMatchModel.updateOne(
       key,
@@ -143,18 +150,36 @@ async function screenAgainst(
           nationality: entry.nationality,
           program: entry.program,
         },
-        $setOnInsert: { screenedName: party.name, status: 'OPEN' },
+        $setOnInsert: { screenedName: screened.name, status: 'OPEN' },
       },
       { upsert: true },
     );
     // A cleared match only answers for the name that was reviewed.
     await SanctionsMatchModel.updateOne(
-      { ...key, status: 'FALSE_POSITIVE', screenedName: mongoose.trusted({ $ne: party.name }) },
+      { ...key, status: 'FALSE_POSITIVE', screenedName: mongoose.trusted({ $ne: screened.name }) },
       {
-        $set: { status: 'OPEN', screenedName: party.name },
+        $set: { status: 'OPEN', screenedName: screened.name },
         $unset: { decisionNote: 1, decidedBy: 1, decidedAt: 1 },
       },
     );
+  }
+  return found;
+}
+
+/** Screens the party and each person who owns or controls it. */
+async function screenAgainst(
+  companyId: Types.ObjectId,
+  party: { _id: Types.ObjectId; name: string; beneficialOwners?: string[] },
+  entries: Entry[],
+): Promise<number> {
+  let found = await screenName(
+    companyId,
+    party._id,
+    { subject: 'PARTY', name: party.name },
+    entries,
+  );
+  for (const owner of party.beneficialOwners ?? []) {
+    found += await screenName(companyId, party._id, { subject: owner, name: owner }, entries);
   }
   await refreshStatus(companyId, party._id);
   return found;
@@ -177,7 +202,10 @@ export async function rescreenAllParties(companyId: Types.ObjectId): Promise<num
   const entries = await loadEntries(companyId);
   if (entries.length === 0) return 0;
   let found = 0;
-  for await (const party of PartyModel.find({ companyId }).select({ name: 1 }).lean().cursor()) {
+  for await (const party of PartyModel.find({ companyId })
+    .select({ name: 1, beneficialOwners: 1 })
+    .lean()
+    .cursor()) {
     found += await screenAgainst(companyId, party as never, entries);
   }
   return found;

@@ -125,6 +125,7 @@ export const partySchema = z.strictObject({
   notes: optionalText,
   dateOfBirth: z.iso.date().optional(),
   nationality: z.string().trim().length(2).toUpperCase().optional(),
+  beneficialOwners: z.array(text).max(50).optional(),
 });
 const chargeRule = z.strictObject({
   mode: z.string().min(1),
@@ -475,4 +476,12 @@ export const reconciliationCreateSchema = z.strictObject({
   closingBalance: decimalString,
   // Required on an account's first reconciliation; carried forward afterwards.
   openingBalance: decimalString.optional(),
+});
+
+/* Browser error reports */
+export const clientErrorSchema = z.strictObject({
+  message: z.string().max(2000),
+  stack: z.string().max(10_000).optional(),
+  componentStack: z.string().max(10_000).optional(),
+  path: z.string().max(500).optional(),
 });

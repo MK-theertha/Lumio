@@ -11,6 +11,7 @@ import {
 } from '../test/harness.js';
 import { api, auth, idem, oid, tenantKit, today, type Tenant } from '../test/tenant-kit.js';
 import { createApp } from './app.js';
+import { notify } from './modules/notifications/index.js';
 import { describeApiRoutes, type RouteInfo } from './routes/route-table.js';
 
 let app: Express;
@@ -188,6 +189,13 @@ beforeAll(async () => {
     severity: 'LOW',
   });
   expect(rule.id).toBeTruthy();
+  await notify(oid(a.companyId), {
+    key: 'isolation-test',
+    audience: 'audit:read',
+    severity: 'INFO',
+    title: 'Seed',
+    body: 'Seed',
+  });
   const { screenTransaction } = await import('./modules/compliance/index.js');
   await screenTransaction({
     companyId: a.companyId,

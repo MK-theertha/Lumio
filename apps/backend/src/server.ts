@@ -5,6 +5,7 @@ import { loadEnv } from './config/env.js';
 import { initRuntime } from './config/runtime.js';
 import { connectDatabase, disconnectDatabase, pingDatabase } from './database/connection.js';
 import { createLogger } from './shared/logger.js';
+import { startMetrics } from './shared/metrics.js';
 
 const SHUTDOWN_TIMEOUT_MS = 25_000;
 
@@ -12,6 +13,7 @@ const env = loadEnv();
 const logger = createLogger(env.LOG_LEVEL, 'api');
 initRuntime(env);
 
+startMetrics(env.METRICS_PORT);
 if (env.SENTRY_DSN) Sentry.init({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
 
 await connectDatabase(env.MONGODB_URI);

@@ -8,6 +8,8 @@ import '../../modules/einvoice/index.js';
 import '../../modules/finance/index.js';
 import '../../modules/goaml/index.js';
 import '../../modules/identity/identity.models.js';
+import '../../modules/maintenance/index.js';
+import '../../modules/notifications/index.js';
 import '../../modules/inventory/inventory.models.js';
 import '../../modules/ledger/ledger.models.js';
 import '../../modules/master/index.js';
@@ -51,10 +53,21 @@ async function addComplianceDocumentAndBankPermissions(): Promise<void> {
   }
 }
 
+/** Matches gained a subject, so the old uniqueness rule would now reject beneficial owners. */
+async function replaceSanctionsMatchIndex(): Promise<void> {
+  const collection = mongoose.connection.collection('sanctionsMatches');
+  const name = 'companyId_1_partyId_1_source_1_externalId_1';
+  if ((await collection.indexes()).some((index) => index.name === name)) {
+    await collection.dropIndex(name);
+  }
+  await createCollectionsAndIndexes();
+}
+
 /** Append only. Never edit a migration that has shipped. */
 export const migrations: Migration[] = [
   { id: '001-kernel-indexes', up: createCollectionsAndIndexes },
   { id: '002-domain-collections', up: createCollectionsAndIndexes },
   { id: '003-documents-sanctions-goaml-einvoice-bank', up: createCollectionsAndIndexes },
   { id: '004-new-role-permissions', up: addComplianceDocumentAndBankPermissions },
+  { id: '005-sanctions-subject-and-maintenance', up: replaceSanctionsMatchIndex },
 ];

@@ -24,7 +24,16 @@ export type Row = Record<string, unknown> & { id: string };
 export interface FieldSpec {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'decimal' | 'number' | 'checkbox' | 'select' | 'multiselect' | 'ref';
+  type?:
+    | 'text'
+    | 'email'
+    | 'decimal'
+    | 'number'
+    | 'checkbox'
+    | 'select'
+    | 'multiselect'
+    | 'ref'
+    | 'list';
   options?: string[];
   ref?: { path: string; label: (row: Row) => string };
 }
@@ -63,6 +72,14 @@ function clean(values: FieldValues, fields: FieldSpec[], prefix = ''): FieldValu
       continue;
     }
     const spec = fields.find((f) => f.name === `${prefix}${key}`);
+    if (spec?.type === 'list' && typeof value === 'string') {
+      const items = value
+        .split(';')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (items.length > 0) output[key] = items;
+      continue;
+    }
     output[key] = spec?.type === 'number' ? Number(value) : value;
   }
   return output;

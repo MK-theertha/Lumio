@@ -1,4 +1,6 @@
 import type { PublishableEvent, Publisher } from '@lumio/backend/modules/platform/outbox/index.js';
+import { NIGHTLY_EVENT } from '@lumio/backend/modules/maintenance/index.js';
+import { countJob } from '@lumio/backend/shared/metrics.js';
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq';
 import type { Logger } from 'pino';
 
@@ -28,6 +30,24 @@ export function createPublisher(queue: EventQueue, retry = DEFAULT_RETRY): Publi
   };
 }
 
+/** Repeating job. Redis keeps the schedule, so several workers still produce one run a night. */
+export async function scheduleNightlyMaintenance(queue: EventQueue): Promise<void> {
+  await queue.upsertJobScheduler(
+    'nightly-maintenance',
+    { pattern: '0 2 * * *', tz: 'Asia/Dubai' },
+    {
+      name: NIGHTLY_EVENT,
+      data: {
+        id: 'nightly',
+        companyId: '',
+        type: NIGHTLY_EVENT,
+        payload: {},
+        correlationId: 'nightly-maintenance',
+      },
+    },
+  );
+}
+
 export function createEventWorker(
   connection: ConnectionOptions,
   handlers: Record<string, EventHandler>,
@@ -44,8 +64,10 @@ export function createEventWorker(
     { connection, concurrency: 10 },
   );
 
+  worker.on('completed', (job) => countJob('completed', { type: job.data.type }));
   worker.on('failed', (job, error) => {
     if (!job) return;
+    countJob('failed', { type: job.data.type });
     const exhausted = job.attemptsMade >= (job.opts.attempts ?? 1);
     logger.error({ jobId: job.id, type: job.data.type, exhausted, err: error }, 'Job failed');
     if (exhausted) {

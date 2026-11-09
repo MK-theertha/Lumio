@@ -12,10 +12,12 @@ import {
   scanDocument,
 } from '@lumio/backend/modules/documents/index.js';
 import { issueEInvoice } from '@lumio/backend/modules/einvoice/index.js';
+import { NIGHTLY_EVENT, runNightlyMaintenance } from '@lumio/backend/modules/maintenance/index.js';
 import { EMAIL_EVENT, type EmailMessage } from '@lumio/backend/modules/identity/index.js';
 import { decrypt } from '@lumio/backend/shared/crypto.js';
 import { Types } from 'mongoose';
 import { createTransport } from 'nodemailer';
+import type { Logger } from 'pino';
 import type { EventHandler } from './queues.js';
 
 type Payload = {
@@ -42,7 +44,7 @@ function screen(trigger: ScreenableEvent['trigger']): EventHandler {
   };
 }
 
-export function createHandlers(): Record<string, EventHandler> {
+export function createHandlers(logger: Logger): Record<string, EventHandler> {
   const transport = createTransport(runtime().SMTP_URL);
   const screenSale = screen('SALE_POSTED');
   const scanner = configuredScanner();
@@ -58,6 +60,7 @@ export function createHandlers(): Record<string, EventHandler> {
       const { id } = event.payload as Payload;
       await issueEInvoice(new Types.ObjectId(event.companyId), id);
     },
+    [NIGHTLY_EVENT]: () => runNightlyMaintenance(logger, store),
     [DOCUMENT_UPLOADED_EVENT]: async (event) => {
       if (scanner) {
         await scanDocument(event.companyId, (event.payload as Payload).id, store, scanner);
