@@ -1,6 +1,6 @@
 # Lumio
 
-An enterprise ERP for traders, jewellers and bullion dealers, built on the MERN stack with TypeScript.
+An enterprise ERP for traders built on the MERN stack with TypeScript.
 
 **Status: core ERP working in development; not production ready.**
 See the [production readiness checklist](docs/production-readiness.md) for what is and is not done.
