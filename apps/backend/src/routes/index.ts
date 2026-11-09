@@ -682,13 +682,28 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.use('/auth', createAuthRouter(deps));
   router.use(authenticate);
 
+  const assertPlatformAdmin = async (req: Request) => {
+    const user = await UserModel.findById(req.auth.userId).lean();
+    if (!user?.isPlatformAdmin) {
+      throw new AppError(403, 'FORBIDDEN', 'Platform administrators only.');
+    }
+  };
+
+  router.get('/platform/companies', async (req, res) => {
+    await assertPlatformAdmin(req);
+    const rows = await CompanyModel.find()
+      .select({ settings: 0 })
+      .sort({ _id: -1 })
+      .limit(500)
+      .lean();
+    sendSuccess(req, res, plain(rows));
+  });
+
   router.post(
     '/platform/companies',
     validate({ body: v.provisionCompanySchema }),
     async (req, res) => {
-      const user = await UserModel.findById(req.auth.userId).lean();
-      if (!user?.isPlatformAdmin)
-        throw new AppError(403, 'FORBIDDEN', 'Platform administrators only.');
+      await assertPlatformAdmin(req);
       sendSuccess(
         req,
         res,

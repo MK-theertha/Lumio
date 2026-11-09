@@ -10,7 +10,7 @@ interface RequestSchemas {
 
 /** Parses request parts against their schemas and exposes only the result on `req.validated`. */
 export function validate(schemas: RequestSchemas): RequestHandler {
-  return (req, _res, next) => {
+  const handler: RequestHandler = (req, _res, next) => {
     req.validated = {};
     for (const part of ['body', 'query', 'params'] as const) {
       const schema = schemas[part];
@@ -28,4 +28,5 @@ export function validate(schemas: RequestSchemas): RequestHandler {
     }
     next();
   };
+  return Object.assign(handler, { requestSchemas: schemas });
 }

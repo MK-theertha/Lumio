@@ -243,3 +243,25 @@ export async function listCompanyUsers(ctx: RequestContext) {
       .map((a) => ({ roleId: a.roleId, branchIds: a.branchIds })),
   }));
 }
+
+/** One-time bootstrap, run from the command line. Every later company is created through the API. */
+export async function createFirstPlatformAdmin(input: {
+  email: string;
+  name: string;
+  password: string;
+}): Promise<{ id: string }> {
+  if (await UserModel.exists({ isPlatformAdmin: true })) {
+    throw new ConflictError('A platform administrator already exists.');
+  }
+  const email = normaliseEmail(input.email);
+  if (await UserModel.exists({ email })) throw new ConflictError('This email is already in use.');
+  const user = await UserModel.create({
+    email,
+    name: input.name,
+    status: 'ACTIVE',
+    isPlatformAdmin: true,
+    passwordHash: await hashPassword(input.password),
+    emailVerifiedAt: new Date(),
+  });
+  return { id: user._id.toString() };
+}

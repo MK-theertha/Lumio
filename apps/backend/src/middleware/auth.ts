@@ -38,9 +38,10 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
 };
 
 export function requirePermission(...required: Permission[]): RequestHandler {
-  return (req, _res, next) => {
+  const handler: RequestHandler = (req, _res, next) => {
     if (!req.ctx) throw forbidden();
     if (!required.every((permission) => req.ctx.permissions.has(permission))) throw forbidden();
     next();
   };
+  return Object.assign(handler, { requiredPermissions: required });
 }

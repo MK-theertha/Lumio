@@ -30,6 +30,7 @@ interface NavItem {
   to: string;
   label: string;
   permission?: string;
+  platformOnly?: boolean;
 }
 interface NavGroup {
   label: string;
@@ -149,11 +150,16 @@ const NAV: NavGroup[] = [
       { to: '/security', label: 'My security' },
     ],
   },
+  {
+    label: 'Platform',
+    icon: Building2,
+    items: [{ to: '/platform/companies', label: 'Companies', platformOnly: true }],
+  },
   { label: 'System', icon: Activity, items: [{ to: '/system-status', label: 'System status' }] },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   return (
     <>
       <div className="flex h-14 shrink-0 items-center border-b px-4 text-lg font-semibold">
@@ -161,7 +167,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
       <nav aria-label="Main" className="flex-1 space-y-3 overflow-y-auto p-2">
         {NAV.map((group) => {
-          const items = group.items.filter((i) => !i.permission || can(i.permission));
+          const items = group.items.filter(
+            (i) =>
+              (!i.permission || can(i.permission)) && (!i.platformOnly || user?.isPlatformAdmin),
+          );
           if (items.length === 0) return null;
           const Icon = group.icon;
           return (

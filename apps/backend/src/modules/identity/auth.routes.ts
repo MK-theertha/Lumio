@@ -1,3 +1,4 @@
+import { runtime } from '../../config/runtime.js';
 import { randomUUID } from 'node:crypto';
 import {
   changePasswordSchema,
@@ -44,6 +45,7 @@ import {
   type LoginOutcome,
 } from './auth.service.js';
 
+const DEPLOYED = ['production', 'staging'];
 const COOKIE = 'lumio_refresh';
 const COOKIE_PATH = '/api/v1/auth';
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
@@ -62,7 +64,8 @@ function respond(req: Request, res: Response, outcome: LoginOutcome): void {
   }
   res.cookie(COOKIE, outcome.refreshToken, {
     httpOnly: true,
-    secure: req.secure,
+    // Never left to request headers in a deployed environment, where TLS ends at a proxy.
+    secure: req.secure || DEPLOYED.includes(runtime().NODE_ENV),
     sameSite: 'strict',
     path: COOKIE_PATH,
     maxAge: COOKIE_MAX_AGE,

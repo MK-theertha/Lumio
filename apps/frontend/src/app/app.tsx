@@ -12,6 +12,7 @@ import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { DocumentsPage } from '@/features/documents/documents';
 import * as inventory from '@/features/inventory/inventory-pages';
 import * as master from '@/features/master/master-pages';
+import { PlatformCompaniesPage } from '@/features/platform/platform-companies-page';
 import * as settings from '@/features/settings/settings-pages';
 import { SystemStatusPage } from '@/features/system/system-status-page';
 import { EInvoicesPage } from '@/features/trade/e-invoices-page';
@@ -30,7 +31,9 @@ function RequireAuth() {
 }
 
 function Guard({ permission, children }: { permission: string; children: ReactNode }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  if (user?.isPlatformAdmin && !user.companyId)
+    return <Navigate to="/platform/companies" replace />;
   return can(permission) ? (
     children
   ) : (
@@ -104,6 +107,7 @@ export function App() {
                         element={<Guard permission={permission}>{element}</Guard>}
                       />
                     ))}
+                    <Route path="/platform/companies" element={<PlatformCompaniesPage />} />
                     <Route path="/security" element={<settings.SecurityPage />} />
                     <Route path="/system-status" element={<SystemStatusPage />} />
                     <Route path="*" element={<p className="text-sm">Page not found.</p>} />

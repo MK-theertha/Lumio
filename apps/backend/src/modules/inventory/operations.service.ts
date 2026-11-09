@@ -553,10 +553,18 @@ export function receiveTransfer(ctx: RequestContext, id: string) {
   });
 }
 
+/** Lot-tracked stock is held per lot, so a line without one would read a balance of zero. */
+function assertLotGiven(product: { name: string; tracking: string }, lotId?: string): void {
+  if (product.tracking === 'LOT' && !lotId) {
+    throw new BusinessRuleError(`Choose a lot for ${product.name}.`);
+  }
+}
+
 export function reserveStock(ctx: RequestContext, input: z.infer<typeof stockReservationSchema>) {
   return runInTransaction(ctx, async (tx) => {
     const warehouse = await warehouseOf(tx, input.warehouseId);
     const { product, purity } = await productWithPurity(tx, input.productId);
+    assertLotGiven(product, input.lotId);
     const net = d128(input.netWeight);
     const balance = await StockBalanceModel.findOneAndUpdate(
       {
@@ -618,7 +626,8 @@ export async function createCount(ctx: RequestContext, input: z.infer<typeof sto
   await warehouseOf(ctx, input.warehouseId);
   const lines = [];
   for (const line of input.lines) {
-    const { purity } = await productWithPurity(ctx, line.productId);
+    const { product, purity } = await productWithPurity(ctx, line.productId);
+    assertLotGiven(product, line.lotId);
     const balance = await StockBalanceModel.findOne({
       companyId: ctx.companyId,
       warehouseId: input.warehouseId,

@@ -165,10 +165,10 @@ export async function screenParty(
   companyId: Types.ObjectId,
   partyId: Types.ObjectId | string,
 ): Promise<number> {
-  const entries = await loadEntries(companyId);
-  if (entries.length === 0) return 0;
   const party = await PartyModel.findOne({ companyId, _id: partyId }).lean();
   if (!party) throw new NotFoundError();
+  const entries = await loadEntries(companyId);
+  if (entries.length === 0) return 0;
   return screenAgainst(companyId, party, entries);
 }
 
