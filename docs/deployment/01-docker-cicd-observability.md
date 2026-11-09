@@ -67,3 +67,27 @@ Backup: point-in-time recovery on the database, daily encrypted snapshots, objec
 | Health          | `/healthz/live` (process only), `/healthz/ready` (Mongo, Redis), `/healthz/startup`             |
 | Alerts          | Integrity job failure, DLQ growth, error spikes, replication lag, stuck outbox, backup failure  |
 | Shutdown        | SIGTERM: stop accepting work, finish requests and transactions, close queues and connections    |
+
+## First deployment
+
+Create the first platform administrator once, with the password passed through the environment so it never appears in a process list or shell history:
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm \
+  -e PLATFORM_ADMIN_EMAIL -e PLATFORM_ADMIN_NAME -e PLATFORM_ADMIN_PASSWORD \
+  api node apps/backend/dist/database/create-platform-admin.js
+```
+
+That person signs in and creates companies under Platform, then Companies. The command refuses to run once an administrator exists.
+
+Staging and production also need `CLAMAV_HOST`, a private `S3_BUCKET`, and the proxy in front of Nginx to set `X-Forwarded-Proto`. Set `METRICS_PORT` to expose Prometheus metrics, `SANCTIONS_UN_URL` for the nightly list refresh, and `PASSWORD_BREACH_CHECK=true` to check new passwords. To make audit seal exports tamper-resistant, enable object lock on the `audit-seals/` prefix.
+
+## TLS, backups and the database role
+
+TLS: add `infrastructure/tls/docker-compose.tls.yml` to the production stack, with `LUMIO_DOMAIN`, `LUMIO_TLS` set to an email address, and `TRUST_PROXY_HOPS=2`.
+
+Backups: schedule `infrastructure/backup/backup.sh` with `MONGODB_URI`, `BACKUP_PASSPHRASE_FILE`, `BACKUP_DIR` and `BACKUP_S3_URI`. Keep the passphrase outside the backup location. Restore with `restore.sh`, then run `dist/database/verify-restore.js` to check the books. Drill this on a schedule.
+
+Database role: after every migration, run `infrastructure/mongo/create-app-user.js` as an administrator. It is safe to repeat, and a collection added by a migration has no access until it runs. The application connects as that user; only migrations use the administrator.
+
+Load: `infrastructure/load/smoke.js` runs with k6 against a non-production environment. It creates real payments. Raise `GENERAL_RATE_LIMIT` for the test, and consider it for offices where many users share one IP address.

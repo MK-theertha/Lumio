@@ -352,6 +352,7 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
   const [branchId, setBranchId] = useState('');
   const [docDate, setDocDate] = useState(new Date().toISOString().slice(0, 10));
   const [currency, setCurrency] = useState('AED');
+  const [exchangeRate, setExchangeRate] = useState('');
   const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('');
   const [goodsReceiptId, setGoodsReceiptId] = useState('');
   const receipts = useQuery({
@@ -371,6 +372,7 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
       branchId: branchId || (branches.data?.rows[0]?.id ?? ''),
       docDate,
       currency,
+      ...(exchangeRate ? { exchangeRate } : {}),
       ...(supplierInvoiceNo ? { supplierInvoiceNo } : {}),
       ...(goodsReceiptId ? { goodsReceiptId } : {}),
       lines: toPayload(lines),
@@ -387,6 +389,7 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
       currency,
       supplierInvoiceNo,
       goodsReceiptId,
+      exchangeRate,
       lines,
       payAmount,
       payAccount,
@@ -448,6 +451,15 @@ export function TradeEditorPage({ mode }: { mode: Mode }) {
             <Input
               value={supplierInvoiceNo}
               onChange={(e) => setSupplierInvoiceNo(e.target.value)}
+            />
+          </Field>
+        )}
+        {currency !== 'AED' && (
+          <Field label="Rate to AED">
+            <Input
+              inputMode="decimal"
+              value={exchangeRate}
+              onChange={(e) => setExchangeRate(e.target.value)}
             />
           </Field>
         )}

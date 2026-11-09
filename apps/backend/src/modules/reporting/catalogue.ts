@@ -2,11 +2,17 @@ import mongoose, { Types, type PipelineStage } from 'mongoose';
 import type { RequestContext } from '../../shared/context.js';
 import { dec } from '../../shared/decimal.js';
 import { StockBalanceModel, StockMovementModel } from '../inventory/index.js';
-import { OpenItemModel } from '../finance/index.js';
+import { OpenItemModel, PartyBalanceModel } from '../finance/index.js';
+import { JournalLineModel, LedgerAccountModel } from '../ledger/index.js';
 import { PartyModel, ProductModel, PurityModel } from '../master/index.js';
 import { TaxTransactionModel } from '../tax/index.js';
-import { PurchaseInvoiceModel, SalesInvoiceModel } from '../trade/index.js';
-import { WarehouseModel } from '../organisation/index.js';
+import {
+  CreditNoteModel,
+  GoodsReceiptModel,
+  PurchaseInvoiceModel,
+  SalesInvoiceModel,
+} from '../trade/index.js';
+import { BranchModel, WarehouseModel } from '../organisation/index.js';
 import { dateFilter, type Range } from './statements.js';
 
 export type Row = Record<string, unknown>;
@@ -206,7 +212,152 @@ async function vatSummary(ctx: RequestContext, range: Range) {
   }));
 }
 
+const profitReport = (key: unknown, title: string): ReportDefinition => ({
+  title,
+  permission: 'financials:view_cost',
+  run: async (ctx, range) => {
+    const rows = await grouped(ctx, range, 'SALE', key);
+    return rows.map((row) => {
+      const revenue = dec(row.taxable as string);
+      const gross = dec(row.grossProfit as string);
+      return {
+        group: row.group,
+        fineWeight: row.fineWeight,
+        revenue: revenue.toFixed(2),
+        cost: row.cost,
+        grossProfit: gross.toFixed(2),
+        marginPercent: revenue.isZero() ? '0.00' : gross.dividedBy(revenue).times(100).toFixed(2),
+        profitPerFineGram: dec(row.fineWeight as string).isZero()
+          ? '0.00'
+          : gross.dividedBy(row.fineWeight as string).toFixed(2),
+      };
+    });
+  },
+});
+
+/** After expenses, by branch, straight from the ledger. */
+async function branchNetProfit(ctx: RequestContext, range: Range): Promise<Row[]> {
+  const accounts = await LedgerAccountModel.find({
+    companyId: ctx.companyId,
+    type: mongoose.trusted({ $in: ['INCOME', 'EXPENSE'] }),
+  }).lean();
+  const typeOf = new Map(accounts.map((a) => [String(a._id), a.type]));
+  const groups = await JournalLineModel.aggregate<{
+    _id: { branchId: Types.ObjectId; accountId: Types.ObjectId };
+    debit: Types.Decimal128;
+    credit: Types.Decimal128;
+  }>([
+    {
+      $match: {
+        companyId: ctx.companyId,
+        accountId: { $in: accounts.map((a) => a._id) },
+        closing: { $ne: true },
+        ...dateFilter('postingDate', range),
+      },
+    },
+    {
+      $group: {
+        _id: { branchId: '$branchId', accountId: '$accountId' },
+        debit: { $sum: '$debit' },
+        credit: { $sum: '$credit' },
+      },
+    },
+  ]);
+  const branches = await BranchModel.find({ companyId: ctx.companyId }).lean();
+  return branches.map((branch) => {
+    const lines = groups.filter((g) => g._id.branchId.equals(branch._id));
+    const sum = (type: string) =>
+      lines
+        .filter((g) => typeOf.get(String(g._id.accountId)) === type)
+        .reduce((t, g) => t.plus(dec(g.credit)).minus(dec(g.debit)), dec('0'));
+    const income = sum('INCOME');
+    const expense = sum('EXPENSE').negated();
+    return {
+      branch: branch.name,
+      income: income.toFixed(2),
+      expenses: expense.toFixed(2),
+      netProfit: income.minus(expense).toFixed(2),
+    };
+  });
+}
+
+async function supplierPerformance(ctx: RequestContext, range: Range): Promise<Row[]> {
+  const purchased = await grouped(ctx, range, 'PURCHASE', '$partyId');
+  const parties = await PartyModel.find({ companyId: ctx.companyId }).lean();
+  const name = new Map(parties.map((p) => [String(p._id), p.name]));
+  const receipts = await GoodsReceiptModel.find({
+    companyId: ctx.companyId,
+    ...dateFilter('receiptDate', range),
+  }).lean();
+  const returns = await CreditNoteModel.find({
+    companyId: ctx.companyId,
+    kind: 'SUPPLIER',
+    ...dateFilter('docDate', range),
+  }).lean();
+  return purchased.map((row) => {
+    const own = receipts.filter((r) => String(r.partyId) === row.group);
+    const lines = own.flatMap((r) => r.lines as { varianceWeight?: Types.Decimal128 }[]);
+    const shortfall = lines.reduce((sum, l) => sum.plus(dec(l.varianceWeight)), dec('0'));
+    const returned = returns
+      .filter((c) => String(c.partyId) === row.group)
+      .reduce((sum, c) => sum.plus(dec(c.total)), dec('0'));
+    const bought = dec(row.total as string);
+    return {
+      supplier: name.get(row.group as string) ?? row.group,
+      invoices: row.documents,
+      fineWeight: row.fineWeight,
+      value: bought.toFixed(2),
+      goodsReceipts: own.length,
+      weightVariance: shortfall.toFixed(3),
+      returnedValue: returned.toFixed(2),
+      returnRatePercent: bought.isZero()
+        ? '0.00'
+        : returned.dividedBy(bought).times(100).toFixed(2),
+    };
+  });
+}
+
+/** The desk's exposure: metal held against metal owed to or by customers. */
+async function metalPosition(ctx: RequestContext): Promise<Row[]> {
+  const [stock] = await StockBalanceModel.aggregate([
+    { $match: { companyId: ctx.companyId } },
+    { $group: { _id: null, fine: { $sum: '$fine' } } },
+  ]);
+  const [unfixed] = await PartyBalanceModel.aggregate([
+    { $match: { companyId: ctx.companyId } },
+    { $group: { _id: null, fine: { $sum: '$metalFine' } } },
+  ]);
+  const held = dec(stock?.fine);
+  const owed = dec(unfixed?.fine);
+  return [
+    {
+      fineInStock: held.toFixed(4),
+      netFineOwedToParties: owed.toFixed(4),
+      netPosition: held.minus(owed).toFixed(4),
+    },
+  ];
+}
+
 export const REPORTS: Record<string, ReportDefinition> = {
+  'profit-by-customer': profitReport('$partySnapshot.name', 'Profit by customer'),
+  'profit-by-product': profitReport('$lines.productName', 'Profit by product'),
+  'profit-by-purity': profitReport('$lines.purityLabel', 'Profit by purity'),
+  'profit-by-month': profitReport(month, 'Profit by month'),
+  'branch-net-profit': {
+    title: 'Net profit by branch',
+    permission: 'financials:view_cost',
+    run: branchNetProfit,
+  },
+  'supplier-performance': {
+    title: 'Supplier performance',
+    permission: 'report:read',
+    run: supplierPerformance,
+  },
+  'metal-position': {
+    title: 'Metal position',
+    permission: 'financials:view_cost',
+    run: metalPosition,
+  },
   'sales-daily': sales(day, 'Daily sales'),
   'sales-monthly': sales(month, 'Monthly sales'),
   'sales-by-customer': sales('$partySnapshot.name', 'Sales by customer'),

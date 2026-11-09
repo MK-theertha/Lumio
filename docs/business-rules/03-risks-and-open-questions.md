@@ -61,6 +61,23 @@ These come from a preliminary web search on 2026-11-08. They shaped the design, 
 | AML reporting    | Dealers in precious metals and stones reportedly must file a DPMSR through goAML on qualifying transactions of AED 55,000 or more, plus STRs. Rules on payment mode, and intra-group treatment, conflict among sources                                  | Mostly one consultancy source ([amluae.com](https://amluae.com/aml-regulations-for-dpms-in-uae/))                                                                                                                                                                       | `complianceRules` configurable. Payment methods carry an AML class. Aggregation by party                                                             |
 | Record retention | Not established by this search                                                                                                                                                                                                                          | Unknown                                                                                                                                                                                                                                                                 | No TTL on any retained record; retention policy awaits advice                                                                                        |
 
+## 15.2a Dubai market defaults (proposed, not approved)
+
+Company settings has an **Add Dubai defaults** button. It fills in the common conventions below as a starting point, from public sources read on 2026-11-09. Most are vendor or consultancy pages, not official texts, and none replaces the sign-offs at the end of the [readiness checklist](../production-readiness.md).
+
+| Open question    | Proposed default                                                                                              | Status                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Q1 Rate basis    | Fine-gram reference from spot USD/oz, 31.1034768 g per ounce, 3.6725 AED per USD, optional premium            | Purity-specific rates remain available                                                                                 |
+| Q2 Fineness      | 24K 0.9999, 22K 0.9167, 21K 0.8750, 18K 0.7500                                                                | 22K is also stamped 916. Your accountant should choose                                                                 |
+| Q3 Making charge | Left to each product and party. Public figures vary widely, per gram or 5 to 25%                              | Not defaulted                                                                                                          |
+| Q5 Tola          | 11.6638 g, editable per company                                                                               | 11.664 is also used                                                                                                    |
+| Q9 Unfixed gold  | Built: metal accounts in fine grams, with receipts, issues, price fixing and a per-party limit                | Gold loans, consignment and goldsmith job work are not modelled separately                                             |
+| Q13 Currency     | AED base. Foreign invoices are converted at posting at the rate on the document; payments are recorded in AED | No exchange gain or loss on settlement, and no revaluation                                                             |
+| VAT treatment    | 99% or more investment metal zero rated; registered buyers reverse charge; everything else 5%                 | Codes are created **unverified**, so they cannot be used until an adviser confirms them. Exports are not distinguished |
+| AML threshold    | DPMSR at AED 55,000: individuals on cash; businesses on cash, exchange house and wires, linked over 30 days   | The 30-day window is an assumption. The regulation says "linked" without one we could verify                           |
+
+Metal accounts carry received gold at a provisional rate until fixed, and charge VAT at the point of fixing. Both are accounting and tax judgements that need sign-off.
+
 ## 15.3 Assumptions
 
 Each is safe to reverse until the phase noted.

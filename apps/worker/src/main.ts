@@ -9,6 +9,7 @@ import {
 import { OutboxEventModel, OutboxRelay } from '@lumio/backend/modules/platform/outbox/index.js';
 import { createLogger } from '@lumio/backend/shared/logger.js';
 import { observeGauge, startMetrics } from '@lumio/backend/shared/metrics.js';
+import { startTracing } from '@lumio/backend/shared/tracing.js';
 import * as Sentry from '@sentry/node';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -37,6 +38,7 @@ const relay = new OutboxRelay(createPublisher(queue), logger);
 relay.start();
 await scheduleNightlyMaintenance(queue);
 startMetrics(env.METRICS_PORT);
+startTracing('lumio-worker', env.OTEL_EXPORTER_OTLP_ENDPOINT);
 observeGauge('queue_waiting', () => queue.getWaitingCount());
 observeGauge('queue_dead_letters', () =>
   deadLetters.getJobCounts('waiting').then((c) => c.waiting ?? 0),

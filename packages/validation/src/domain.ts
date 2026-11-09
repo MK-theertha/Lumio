@@ -86,12 +86,23 @@ export const companySettingsSchema = z.strictObject({
       saleApprovalAmount: decimalNonNegative.optional(),
       purchaseApprovalAmount: decimalNonNegative.optional(),
       discountApprovalPercent: decimalNonNegative.optional(),
+      tolaGrams: decimalNonNegative.optional(),
     })
     .optional(),
 });
+export const EMIRATE_NAMES = [
+  'ABU_DHABI',
+  'DUBAI',
+  'SHARJAH',
+  'AJMAN',
+  'UMM_AL_QUWAIN',
+  'RAS_AL_KHAIMAH',
+  'FUJAIRAH',
+] as const;
 export const branchSchema = z.strictObject({
   code,
   name: text,
+  emirate: z.enum(EMIRATE_NAMES).optional(),
   address: optionalText,
   phone: optionalText,
 });
@@ -126,6 +137,7 @@ export const partySchema = z.strictObject({
   dateOfBirth: z.iso.date().optional(),
   nationality: z.string().trim().length(2).toUpperCase().optional(),
   beneficialOwners: z.array(text).max(50).optional(),
+  metalLimitFine: decimalNonNegative.optional(),
 });
 const chargeRule = z.strictObject({
   mode: z.string().min(1),
@@ -171,7 +183,7 @@ export const goldRateSchema = z.strictObject({
   branchId: id.optional(),
   basis: z.enum(['FINE_GRAM', 'PURITY_GRAM']),
   value: decimalNonNegative,
-  unit: z.enum(['G', 'KG', 'TOZ']).default('G'),
+  unit: z.enum(['G', 'KG', 'TOZ', 'TOLA']).default('G'),
   currency: z.string().length(3),
   source: text.default('MANUAL'),
 });
@@ -358,6 +370,8 @@ export const tradeDocumentSchema = z.strictObject({
   supplierInvoiceNo: optionalText,
   goodsReceiptId: id.optional(),
   currency: z.string().length(3),
+  // Base currency per one unit of the invoice currency. Required outside the base currency.
+  exchangeRate: decimalNonNegative.optional(),
   lines: z.array(tradeLine).min(1).max(500),
   payments: z.array(settlement).default([]),
   notes: optionalText,
@@ -417,6 +431,9 @@ export const complianceRuleSchema = z.strictObject({
   trigger: z.enum(['SALE_POSTED', 'PURCHASE_POSTED', 'PAYMENT_POSTED']),
   amlClasses: z.array(z.string()).default([]),
   thresholdAmount: decimalNonNegative,
+  // Treats a party's transactions within this many days as linked.
+  aggregateDays: z.number().int().min(1).max(365).optional(),
+  partyTypes: z.array(z.enum(['INDIVIDUAL', 'BUSINESS'])).default([]),
   severity: z.enum(['LOW', 'MEDIUM', 'HIGH']),
   active: z.boolean().default(true),
   legalReference: optionalText,
@@ -530,3 +547,56 @@ export const reportScheduleSchema = z.strictObject({
   recipients: z.array(z.email()).min(1).max(20),
 });
 export const switchCompanySchema = z.strictObject({ companyId: id });
+
+/* Dubai rate board */
+export const spotRateSchema = z.strictObject({
+  usdPerOz: decimalNonNegative,
+  usdAed: decimalNonNegative.default('3.6725'),
+  premiumPerGram: decimalString.default('0'),
+});
+
+/* Metal accounts */
+const metalBase = {
+  partyId: id,
+  warehouseId: id,
+  location,
+  productId: id,
+  ...quantities,
+  date: z.iso.date(),
+  memo: optionalText,
+};
+export const metalReceiptSchema = z.strictObject({
+  ...metalBase,
+  provisionalRate: decimalNonNegative,
+  tag: optionalText,
+});
+export const metalIssueSchema = z.strictObject({ ...metalBase, lotId: id.optional() });
+export const metalFixSchema = z.strictObject({
+  partyId: id,
+  branchId: id,
+  fineGrams: decimalNonNegative,
+  ratePerFineGram: decimalNonNegative,
+  productKind: z.string().min(1).default('BAR'),
+  fineness: decimalNonNegative.default('0.9999'),
+  date: z.iso.date(),
+  memo: optionalText,
+});
+
+/* VAT return */
+export const vatPeriodQuerySchema = z.object({ from: z.iso.date(), to: z.iso.date() });
+export const vatFilingSchema = z.strictObject({
+  from: z.iso.date(),
+  to: z.iso.date(),
+  ftaReference: text,
+});
+
+/* Party activity and posting profiles */
+export const partyActivitySchema = z.strictObject({
+  type: z.enum(['NOTE', 'CALL', 'MEETING', 'EMAIL']).default('NOTE'),
+  note: z.string().trim().min(1).max(2000),
+});
+export const postingProfileSchema = z.strictObject({
+  role: text,
+  branchId: id,
+  accountId: id,
+});

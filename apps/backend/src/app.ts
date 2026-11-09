@@ -14,6 +14,7 @@ import { createApiRouter } from './routes/index.js';
 import { buildOpenApiDocument } from './routes/openapi.js';
 import type { Logger } from './shared/logger.js';
 import { httpMetrics } from './shared/metrics.js';
+import { httpTracing } from './shared/tracing.js';
 
 export interface AppDependencies {
   env: Pick<Env, 'NODE_ENV' | 'CORS_ORIGINS' | 'TRUST_PROXY_HOPS'>;
@@ -33,6 +34,7 @@ export function createApp(deps: AppDependencies): Express {
 
   app.use(correlationId);
   app.use(httpMetrics());
+  app.use(httpTracing());
   app.use(
     pinoHttp({
       logger,

@@ -1,12 +1,18 @@
-import mongoose, { Schema, type Model, type SchemaDefinition } from 'mongoose';
+import mongoose, {
+  Schema,
+  type InferRawDocType,
+  type Model,
+  type SchemaDefinition,
+  type Types,
+} from 'mongoose';
 import { ConflictError } from '../shared/errors.js';
 import { tenantGuardPlugin } from './plugins/tenant-guard.js';
 
-export const D128 = { type: Schema.Types.Decimal128 };
-export const RD128 = { type: Schema.Types.Decimal128, required: true };
-export const OID = { type: Schema.Types.ObjectId };
-export const ROID = { type: Schema.Types.ObjectId, required: true };
-export const RS = { type: String, required: true };
+export const D128 = { type: Schema.Types.Decimal128 } as const;
+export const RD128 = { type: Schema.Types.Decimal128, required: true } as const;
+export const OID = { type: Schema.Types.ObjectId } as const;
+export const ROID = { type: Schema.Types.ObjectId, required: true } as const;
+export const RS = { type: String, required: true } as const;
 
 const UPDATE_HOOKS = [
   'updateOne',
@@ -28,14 +34,20 @@ export function appendOnlyPlugin(schema: Schema): void {
   }
 }
 
-export function tenantSchema(
+export type TenantDoc<D> = InferRawDocType<D & { companyId: typeof ROID }> & {
+  _id: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** The type of each model comes from its schema, so services see the real field names. */
+export function tenantSchema<const D extends Record<string, unknown>>(
   collection: string,
-  definition: SchemaDefinition,
+  definition: D,
   options: { timestamps?: boolean; appendOnly?: boolean } = {},
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- definitions are built dynamically, so inference is unavailable
-): Schema<any> {
+): Schema<TenantDoc<D>> {
   const schema = new Schema(
-    { companyId: ROID, ...definition },
+    { companyId: ROID, ...(definition as SchemaDefinition) },
     {
       collection,
       versionKey: false,
@@ -45,10 +57,8 @@ export function tenantSchema(
   );
   schema.plugin(tenantGuardPlugin);
   if (options.appendOnly) schema.plugin(appendOnlyPlugin);
-  return schema;
+  return schema as unknown as Schema<TenantDoc<D>>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see tenantSchema; services type their own reads
-export const tenantModel = (name: string, schema: Schema<any>): Model<any> =>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mongoose.model<any>(name, schema) as unknown as Model<any>;
+export const tenantModel = <T>(name: string, schema: Schema<T>): Model<T> =>
+  mongoose.model<T>(name, schema) as unknown as Model<T>;

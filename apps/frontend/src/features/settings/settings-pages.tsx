@@ -252,6 +252,7 @@ export function CompanySettingsPage() {
                       ...opt('saleApprovalAmount'),
                       ...opt('purchaseApprovalAmount'),
                       ...opt('discountApprovalPercent'),
+                      ...opt('tolaGrams'),
                     },
                   },
                 });
@@ -268,6 +269,9 @@ export function CompanySettingsPage() {
               </Field>
               <Field label="Address">
                 <Input name="address" defaultValue={(d.address as string) ?? ''} />
+              </Field>
+              <Field label="Grams per tola">
+                <Input name="tolaGrams" defaultValue={(d.settings.tolaGrams as string) ?? ''} />
               </Field>
               <Field label="goAML reporting entity ID">
                 <Input name="goamlEntityId" defaultValue={(d.goamlEntityId as string) ?? ''} />
@@ -311,7 +315,23 @@ export function CompanySettingsPage() {
                   {label}
                 </label>
               ))}
-              <div className="flex justify-end">
+              <div className="flex justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={send.isPending}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Add common Dubai purities, VAT codes and AML rules? Nothing existing is changed, and VAT codes stay unverified until your adviser confirms them.',
+                      )
+                    ) {
+                      send.mutate({ path: '/company/presets/dubai' });
+                    }
+                  }}
+                >
+                  Add Dubai defaults
+                </Button>
                 <Button type="submit" disabled={send.isPending}>
                   Save
                 </Button>

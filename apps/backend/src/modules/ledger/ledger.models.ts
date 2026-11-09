@@ -23,6 +23,7 @@ export const LEDGER_ROLES = [
   'RETAINED_EARNINGS',
   'INTER_BRANCH',
   'GRNI',
+  'METAL_CLEARING',
 ] as const;
 export type LedgerRole = (typeof LEDGER_ROLES)[number];
 
@@ -49,6 +50,14 @@ ledgerAccountSchema.index(
   { unique: true, partialFilterExpression: { systemRole: { $type: 'string' } } },
 );
 export const LedgerAccountModel = tenantModel('LedgerAccount', ledgerAccountSchema);
+
+const postingProfileSchema = tenantSchema(
+  'postingProfiles',
+  { role: RS, branchId: ROID, accountId: ROID, archivedAt: Date },
+  { timestamps: true },
+);
+postingProfileSchema.index({ companyId: 1, role: 1, branchId: 1 }, { unique: true });
+export const PostingProfileModel = tenantModel('PostingProfile', postingProfileSchema);
 
 const periodSchema = tenantSchema(
   'financialPeriods',

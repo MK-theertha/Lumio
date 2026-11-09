@@ -1,6 +1,9 @@
 import {
   branchSchema,
   complianceRuleSchema,
+  EMIRATE_NAMES,
+  partyPricingSchema,
+  postingProfileSchema,
   departmentSchema,
   employeeSchema,
   financialAccountSchema,
@@ -44,6 +47,15 @@ const ref = (name: string, label: string, path: string): FieldSpec => ({
   ref: { path, label: nameOf },
 });
 
+const POSTING_ROLES = [
+  'SALES_GOLD',
+  'SALES_MAKING',
+  'SALES_DISCOUNT',
+  'COGS',
+  'INVENTORY',
+  'STOCK_GAIN_LOSS',
+] as const;
+
 const page = (config: ResourceConfig) => () => <ResourcePage {...config} />;
 
 const partyFields: FieldSpec[] = [
@@ -62,6 +74,7 @@ const partyFields: FieldSpec[] = [
   { name: 'shippingAddress', label: 'Shipping address' },
   { name: 'category', label: 'Category' },
   { name: 'creditLimit', label: 'Credit limit', type: 'decimal' },
+  { name: 'metalLimitFine', label: 'Unfixed metal limit (fine g)', type: 'decimal' },
   { name: 'notes', label: 'Notes' },
 ];
 const partyColumns = [
@@ -89,6 +102,53 @@ const party = (title: string, singular: string, role: string) =>
 
 export const CustomersPage = party('Customers', 'Customer', 'CUSTOMER');
 export const SuppliersPage = party('Suppliers', 'Supplier', 'SUPPLIER');
+
+export const PartyPricingPage = page({
+  title: 'Party pricing',
+  singular: 'Pricing rule',
+  path: '/party-pricing',
+  permission: 'party',
+  schema: partyPricingSchema,
+  searchable: false,
+  fields: [
+    ref('partyId', 'Party', '/parties'),
+    {
+      name: 'makingMode',
+      label: 'Making charge mode',
+      type: 'select',
+      options: [
+        'NONE',
+        'PER_GRAM_NET',
+        'PER_GRAM_GROSS',
+        'PER_PIECE',
+        'PERCENT_OF_GOLD_VALUE',
+        'FIXED',
+      ],
+    },
+    { name: 'makingValue', label: 'Making charge value', type: 'decimal' },
+    { name: 'discountPercent', label: 'Discount %', type: 'decimal' },
+  ],
+  columns: [
+    text('Making', 'makingMode'),
+    decimal('Value', 'makingValue'),
+    decimal('Discount %', 'discountPercent'),
+  ],
+});
+
+export const PostingProfilesPage = page({
+  title: 'Posting profiles',
+  singular: 'Posting profile',
+  path: '/posting-profiles',
+  permission: 'ledger_account',
+  schema: postingProfileSchema,
+  searchable: false,
+  fields: [
+    { name: 'role', label: 'Account role', type: 'select', options: [...POSTING_ROLES] },
+    ref('branchId', 'Branch', '/branches'),
+    ref('accountId', 'Post to account', '/ledger-accounts'),
+  ],
+  columns: [text('Role', 'role')],
+});
 
 export const PuritiesPage = page({
   title: 'Purities',
@@ -177,10 +237,21 @@ export const BranchesPage = page({
   fields: [
     { name: 'code', label: 'Code' },
     { name: 'name', label: 'Name' },
+    {
+      name: 'emirate',
+      label: 'Emirate (for VAT return)',
+      type: 'select',
+      options: [...EMIRATE_NAMES],
+    },
     { name: 'address', label: 'Address' },
     { name: 'phone', label: 'Phone' },
   ],
-  columns: [text('Code', 'code'), text('Name', 'name'), text('Phone', 'phone')],
+  columns: [
+    text('Code', 'code'),
+    text('Name', 'name'),
+    text('Emirate', 'emirate'),
+    text('Phone', 'phone'),
+  ],
 });
 
 export const WarehousesPage = page({
@@ -404,6 +475,13 @@ export const ComplianceRulesPage = page({
       options: ['CASH', 'BANK', 'CARD', 'EXCHANGE_HOUSE'],
     },
     { name: 'thresholdAmount', label: 'Threshold amount', type: 'decimal' },
+    { name: 'aggregateDays', label: 'Link transactions over (days)', type: 'number' },
+    {
+      name: 'partyTypes',
+      label: 'Only for',
+      type: 'multiselect',
+      options: ['INDIVIDUAL', 'BUSINESS'],
+    },
     { name: 'severity', label: 'Severity', type: 'select', options: ['LOW', 'MEDIUM', 'HIGH'] },
     { name: 'active', label: 'Active', type: 'checkbox' },
     { name: 'legalReference', label: 'Legal reference' },

@@ -1,3 +1,4 @@
+import type { Model } from 'mongoose';
 import mongoose, { Types } from 'mongoose';
 import type { RequestContext } from '../../shared/context.js';
 import { dec, Decimal } from '../../shared/decimal.js';
@@ -7,14 +8,13 @@ import { ProductModel } from '../master/index.js';
 import { AuditLogModel } from '../platform/audit/index.js';
 import { GoldRateModel } from '../pricing/index.js';
 import { FinancialAccountModel } from '../finance/index.js';
-import { PurchaseInvoiceModel, SalesInvoiceModel } from '../trade/index.js';
+import { PurchaseInvoiceModel, SalesInvoiceModel, type TradeInvoiceRow } from '../trade/index.js';
 import { profitAndLoss, type Range } from './statements.js';
 
 const POSTED = mongoose.trusted({ $in: ['POSTED', 'PARTIALLY_RETURNED', 'RETURNED'] });
 
 async function tradeTotal(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- both invoice models share a shape
-  model: any,
+  model: Model<TradeInvoiceRow>,
   ctx: RequestContext,
   from: Date,
   to: Date,
@@ -45,8 +45,7 @@ async function tradeTotal(
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- both invoice models share a shape
-async function trend(model: any, ctx: RequestContext, from: Date) {
+async function trend(model: Model<TradeInvoiceRow>, ctx: RequestContext, from: Date) {
   const rows: { _id: string; total: Types.Decimal128 }[] = await model.aggregate([
     {
       $match: {

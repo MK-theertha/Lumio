@@ -19,6 +19,7 @@ x-node-env: &node-env
   S3_SECRET_ACCESS_KEY: dev-only-secret-key
   # Local stand-in only; the application refuses it in staging and production.
   EINVOICE_PROVIDER: simulated
+  GENERAL_RATE_LIMIT: ${GENERAL_RATE_LIMIT:-600}
   # Start the scanner with --profile scan, then set this to clamav.
   CLAMAV_HOST: ${CLAMAV_HOST:-}
 

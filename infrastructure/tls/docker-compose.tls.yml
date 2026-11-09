@@ -1,0 +1,17 @@
+# Add to the production stack: docker compose -f docker-compose.prod.yml -f infrastructure/tls/docker-compose.tls.yml up -d
+# With this proxy in front of Nginx, set TRUST_PROXY_HOPS=2 in the runtime environment.
+services:
+  tls:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment:
+      LUMIO_DOMAIN: ${LUMIO_DOMAIN:?Set LUMIO_DOMAIN}
+      LUMIO_TLS: ${LUMIO_TLS:?Set LUMIO_TLS to an email address}
+    volumes:
+      - ./infrastructure/tls/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on: [frontend]
+
+volumes:
+  caddy-data:

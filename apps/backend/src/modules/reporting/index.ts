@@ -60,6 +60,7 @@ function toCsv(rows: Row[]): string {
   );
 }
 
+export { createVatRouter } from './vat.js';
 export { createReportScheduleRouter, runDueSchedules, type ReportEmail } from './schedules.js';
 
 export function createReportingRouter(): Router {

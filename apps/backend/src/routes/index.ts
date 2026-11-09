@@ -44,17 +44,20 @@ import {
   JournalEntryModel,
   JournalLineModel,
   LedgerAccountModel,
+  PostingProfileModel,
   postJournal,
   reopenPeriod,
   reverseJournal,
 } from '../modules/ledger/index.js';
 import {
+  PartyActivityModel,
   PartyModel,
   PartyPricingModel,
   ProductModel,
   PurityModel,
 } from '../modules/master/index.js';
-import { provisionCompany } from '../modules/onboarding/index.js';
+import { createMetalRouter } from '../modules/metal/index.js';
+import { applyDubaiPreset, provisionCompany } from '../modules/onboarding/index.js';
 import {
   BranchModel,
   CompanyModel,
@@ -66,7 +69,11 @@ import { AuditLogModel, recordAudit } from '../modules/platform/audit/index.js';
 import { crudRouter } from '../modules/platform/crud/index.js';
 import { executeIdempotent } from '../modules/platform/idempotency/index.js';
 import { createGoldRateRouter } from '../modules/pricing/index.js';
-import { createReportingRouter, createReportScheduleRouter } from '../modules/reporting/index.js';
+import {
+  createReportingRouter,
+  createReportScheduleRouter,
+  createVatRouter,
+} from '../modules/reporting/index.js';
 import { TaxCodeModel, TaxRuleModel } from '../modules/tax/index.js';
 import {
   createGoodsReceiptRouter,
@@ -95,6 +102,44 @@ const list = (model: { find: (f: object) => unknown }, req: Request) =>
     .sort({ _id: -1 })
     .limit(200)
     .lean();
+
+function mountPartyActivities(router: Router): void {
+  const params = validate({
+    params: z.object({ id: v.objectIdSchema }),
+    body: v.partyActivitySchema,
+  });
+  router.get(
+    '/parties/:id/activities',
+    requirePermission('party:read'),
+    idParams,
+    async (req, res) => {
+      const rows = await PartyActivityModel.find({ companyId: req.ctx.companyId, partyId: id(req) })
+        .sort({ at: -1 })
+        .limit(200)
+        .lean();
+      sendSuccess(req, res, plain(rows));
+    },
+  );
+  router.post(
+    '/parties/:id/activities',
+    requirePermission('party:update'),
+    params,
+    async (req, res) => {
+      if (!(await PartyModel.exists({ companyId: req.ctx.companyId, _id: id(req) }))) {
+        throw new NotFoundError();
+      }
+      const input = body<z.infer<typeof v.partyActivitySchema>>(req);
+      const created = await PartyActivityModel.create({
+        ...input,
+        companyId: req.ctx.companyId,
+        partyId: id(req),
+        userId: req.ctx.userId,
+        at: new Date(),
+      });
+      sendSuccess(req, res, plain(created.toObject()), 201);
+    },
+  );
+}
 
 function masterRoutes(router: Router): void {
   const mount = (path: string, options: Parameters<typeof crudRouter>[0]) =>
@@ -623,8 +668,8 @@ function ledgerRoutes(router: Router): void {
               accountId: mongoose.Types.ObjectId;
               debit?: unknown;
               credit?: unknown;
-              partyId?: mongoose.Types.ObjectId;
-              currency?: string;
+              partyId?: mongoose.Types.ObjectId | null;
+              currency?: string | null;
               foreignAmount?: unknown;
               exchangeRate?: unknown;
             }) => ({
@@ -678,6 +723,27 @@ function ledgerRoutes(router: Router): void {
       sendSuccess(req, res, { done: true }, 201);
     },
   );
+  router.use(
+    '/posting-profiles',
+    crudRouter({
+      model: PostingProfileModel,
+      permission: 'ledger_account',
+      entityType: 'posting_profile',
+      create: v.postingProfileSchema,
+      update: v.postingProfileSchema.partial(),
+      filters: ['role', 'branchId'],
+    }),
+  );
+  router.post('/company/presets/dubai', requirePermission('settings:manage'), async (req, res) => {
+    const result = await applyDubaiPreset(req.ctx.companyId);
+    await recordAudit(req.ctx, {
+      action: 'settings.dubai_preset',
+      entityType: 'company',
+      entityId: req.ctx.companyId.toString(),
+      after: result,
+    });
+    sendSuccess(req, res, result, 201);
+  });
   router.post(
     '/periods/year-end',
     requirePermission('period:close'),
@@ -804,6 +870,9 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.use('/documents', createDocumentRouter());
   router.use('/e-invoices', createEInvoiceRouter());
   router.use('/notifications', createNotificationRouter());
+  router.use('/metal-accounts', createMetalRouter());
+  router.use(createVatRouter());
+  mountPartyActivities(router);
   router.use('/report-schedules', createReportScheduleRouter());
   router.use('/integrity-runs', createIntegrityRouter());
   router.use(createBankReconciliationRouter());

@@ -23,7 +23,9 @@ export type Direction = 'SALE' | 'PURCHASE';
 export type TradeInput = z.infer<typeof tradeDocumentSchema>;
 type TradeLineInput = TradeInput['lines'][number];
 
-function makingRule(rule?: { mode: string; value?: string | undefined } | null): MakingRule {
+type ChargeRule = { mode?: string | null | undefined; value?: string | null | undefined };
+
+function makingRule(rule?: ChargeRule | null): MakingRule {
   if (!rule?.mode || rule.mode === 'NONE') return { mode: 'NONE' };
   const value = rule.value ?? '0';
   switch (rule.mode) {
@@ -40,7 +42,7 @@ function makingRule(rule?: { mode: string; value?: string | undefined } | null):
   }
 }
 
-function wastageRule(rule?: { mode: string; value?: string | undefined } | null): WastageRule {
+function wastageRule(rule?: ChargeRule | null): WastageRule {
   if (!rule?.mode || rule.mode === 'NONE') return { mode: 'NONE' };
   const value = rule.value ?? '0';
   switch (rule.mode) {

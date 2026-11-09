@@ -19,6 +19,7 @@ const settingsSchema = new Schema(
     saleApprovalAmount: String,
     purchaseApprovalAmount: String,
     discountApprovalPercent: String,
+    tolaGrams: String,
     // Unapproved proposal until the business signs off: see open questions Q1-Q6.
     pricing: {
       version: { type: String, default: '1' },
@@ -70,6 +71,7 @@ function tenantCollection(
 export const BranchModel = tenantCollection('Branch', 'branches', {
   code: { type: String, required: true },
   name: { type: String, required: true },
+  emirate: String,
   address: String,
   phone: String,
 });

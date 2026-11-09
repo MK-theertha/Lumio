@@ -6,6 +6,7 @@ import { initRuntime } from './config/runtime.js';
 import { connectDatabase, disconnectDatabase, pingDatabase } from './database/connection.js';
 import { createLogger } from './shared/logger.js';
 import { startMetrics } from './shared/metrics.js';
+import { startTracing } from './shared/tracing.js';
 
 const SHUTDOWN_TIMEOUT_MS = 25_000;
 
@@ -14,6 +15,7 @@ const logger = createLogger(env.LOG_LEVEL, 'api');
 initRuntime(env);
 
 startMetrics(env.METRICS_PORT);
+startTracing('lumio-api', env.OTEL_EXPORTER_OTLP_ENDPOINT);
 if (env.SENTRY_DSN) Sentry.init({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
 
 await connectDatabase(env.MONGODB_URI);
@@ -27,6 +29,7 @@ const app = createApp({
   env,
   logger,
   cacheRedis,
+  generalRateLimit: { limit: env.GENERAL_RATE_LIMIT, windowMs: 60_000 },
   healthChecks: {
     mongodb: pingDatabase,
     redisCache: () => cacheRedis.ping(),

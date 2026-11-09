@@ -16,6 +16,7 @@ const CHART: [string, string, string, string | null, boolean?][] = [
   ['1010', 'Bank', 'ASSET', null, true],
   ['1100', 'Accounts receivable', 'ASSET', 'AR'],
   ['1200', 'Gold inventory', 'ASSET', 'INVENTORY'],
+  ['1250', 'Unfixed metal accounts', 'ASSET', 'METAL_CLEARING'],
   ['1300', 'Input VAT recoverable', 'ASSET', 'INPUT_VAT'],
   ['1900', 'Inter-branch clearing', 'ASSET', 'INTER_BRANCH'],
   ['2000', 'Accounts payable', 'LIABILITY', 'AP'],
@@ -35,6 +36,8 @@ const METHODS: [string, string, string][] = [
   ['BANK', 'Bank transfer', 'BANK'],
   ['CARD', 'Card', 'CARD'],
 ];
+
+export { applyDubaiPreset } from './dubai-preset.js';
 
 export async function provisionCompany(
   platform: Pick<RequestContext, 'userId' | 'correlationId'>,

@@ -6,7 +6,7 @@ import {
   objectIdSchema,
 } from '@lumio/validation';
 import express, { Router, type Request } from 'express';
-import mongoose, { Types } from 'mongoose';
+import mongoose, { Types, type Model } from 'mongoose';
 import { z } from 'zod';
 import { runtime } from '../../config/runtime.js';
 import { runInTransaction } from '../../database/transaction.js';
@@ -98,7 +98,8 @@ async function resolveOwner(
   ownerType: UploadQuery['ownerType'],
   ownerId: string,
 ): Promise<{ branchId?: Types.ObjectId }> {
-  const owner = (await OWNER_MODELS[ownerType]
+  const owners = OWNER_MODELS[ownerType] as unknown as Model<{ branchId?: Types.ObjectId }>;
+  const owner = (await owners
     .findOne({ companyId: ctx.companyId, _id: ownerId })
     .select({ branchId: 1 })
     .lean()) as { branchId?: Types.ObjectId } | null;

@@ -1,0 +1,8 @@
+# Terminates TLS and renews certificates automatically. LUMIO_TLS is an email address for
+# Let's Encrypt in real use, or "internal" for a locally trusted certificate in a drill.
+{$LUMIO_DOMAIN} {
+	tls {$LUMIO_TLS}
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy {$LUMIO_UPSTREAM:frontend:8080}
+}

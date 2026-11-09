@@ -25,7 +25,7 @@ import { dec } from './shared/decimal.js';
 
 let app: Express;
 let redis: Redis;
-const { login, addUser, setupTenant, trade, tradeBody, pay } = tenantKit(() => app);
+const { addUser, setupTenant, trade, tradeBody, pay } = tenantKit(() => app);
 const store = createObjectStore(testEnv);
 let t: Tenant;
 const get = (path: string, token = t.token) => request(app).get(api(path)).set(auth(token));

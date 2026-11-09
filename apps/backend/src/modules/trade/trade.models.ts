@@ -1,4 +1,4 @@
-import { Schema } from 'mongoose';
+import { Schema, type Schema as MongooseSchema, type Types } from 'mongoose';
 import {
   D128,
   OID,
@@ -63,7 +63,29 @@ const STATUSES = [
   'VOID',
 ];
 
-function tradeSchema(collection: string) {
+/** Named by hand: the line schema's inferred type cannot be written out in declaration files. */
+export interface TradeInvoiceRow {
+  _id: Types.ObjectId;
+  companyId: Types.ObjectId;
+  number?: string;
+  status: string;
+  partyId: Types.ObjectId;
+  partySnapshot: Record<string, unknown>;
+  branchId: Types.ObjectId;
+  currency: string;
+  docDate: Date;
+  dueDate?: Date;
+  lines: unknown[];
+  taxableTotal: Types.Decimal128;
+  taxTotal: Types.Decimal128;
+  discountTotal: Types.Decimal128;
+  grandTotal: Types.Decimal128;
+  goodsReceiptId?: Types.ObjectId;
+  postedHash?: string;
+  openItemId?: Types.ObjectId;
+}
+
+function tradeSchema(collection: string): MongooseSchema<TradeInvoiceRow> {
   const schema = tenantSchema(
     collection,
     {
@@ -77,6 +99,9 @@ function tradeSchema(collection: string) {
       dueDate: Date,
       supplierInvoiceNo: String,
       goodsReceiptId: OID,
+      exchangeRate: D128,
+      // The invoice's own currency figures, when it was converted to the base currency at posting.
+      foreign: Schema.Types.Mixed,
       lines: { type: [lineSchema], required: true },
       plannedPayments: { type: [Schema.Types.Mixed], default: [] },
       taxableTotal: RD128,
@@ -101,7 +126,7 @@ function tradeSchema(collection: string) {
   schema.index({ companyId: 1, status: 1, docDate: -1 });
   schema.index({ companyId: 1, branchId: 1, docDate: -1 });
   schema.index({ companyId: 1, partyId: 1, docDate: -1 });
-  return schema;
+  return schema as unknown as MongooseSchema<TradeInvoiceRow>;
 }
 
 const purchaseSchema = tradeSchema('purchaseInvoices');

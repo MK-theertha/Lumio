@@ -99,7 +99,13 @@ type InvoiceData = UblInvoice & { partySnapshot: Record<string, string> };
 async function buildXml(companyId: Types.ObjectId, id: string) {
   const company = await CompanyModel.findById(companyId).lean();
   if (!company) throw new NotFoundError();
-  const seller = partyOf({ ...(company as never), name: company.legalName as string });
+  const seller = partyOf({
+    name: company.legalName as string,
+    ...(company.taxRegistrationNumber
+      ? { taxRegistrationNumber: company.taxRegistrationNumber as string }
+      : {}),
+    ...(company.address ? { address: company.address as string } : {}),
+  });
   const note = await CreditNoteModel.findOne({ companyId, _id: id }).lean();
   const invoice = await SalesInvoiceModel.findOne({
     companyId,

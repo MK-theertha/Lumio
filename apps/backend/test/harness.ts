@@ -9,7 +9,8 @@ import { migrations } from '../src/database/migrations/index.js';
 import { runMigrations } from '../src/database/migrations/runner.js';
 import type { RequestContext } from '../src/shared/context.js';
 
-export const silentLogger = pino({ level: 'silent' });
+// TEST_LOG=error shows what a failing request actually hit.
+export const silentLogger = pino({ level: process.env.TEST_LOG ?? 'silent' });
 
 export function testRedisUrl(): string {
   const url = process.env.TEST_REDIS_URL;

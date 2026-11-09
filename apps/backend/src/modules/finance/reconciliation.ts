@@ -9,7 +9,7 @@ import {
   reconciliationCreateSchema,
 } from '@lumio/validation';
 import { Router } from 'express';
-import mongoose, { Types } from 'mongoose';
+import mongoose, { Types, type Model } from 'mongoose';
 import { z } from 'zod';
 import {
   D128,
@@ -353,8 +353,9 @@ export async function cashBook(
     ...(to ? { $lte: endOfDay(to) } : {}),
   };
   const hasRange = Object.keys(range).length > 0;
-  const posted = { companyId: ctx.companyId, financialAccountId: account._id, status: 'POSTED' };
-  const adjusted = { ...posted, status: 'ADJUSTED' };
+  const scope = { companyId: ctx.companyId, financialAccountId: account._id };
+  const posted = { ...scope, status: 'POSTED' as const };
+  const adjusted = { ...scope, status: 'ADJUSTED' as const };
 
   let opening = new Decimal(0);
   if (before) {
@@ -498,8 +499,8 @@ interface ReconciliationRow {
   status: string;
 }
 
-async function sumBy(
-  model: typeof PaymentModel,
+async function sumBy<T>(
+  model: Model<T>,
   match: Record<string, unknown>,
   ctx: RequestContext,
 ): Promise<{ receipts: Decimal; payments: Decimal }> {

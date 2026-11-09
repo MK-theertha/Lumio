@@ -1,5 +1,5 @@
 import { convertRate, type GoldRate } from '@lumio/calc-engine';
-import { goldRateSchema, objectIdSchema } from '@lumio/validation';
+import { goldRateSchema, objectIdSchema, spotRateSchema } from '@lumio/validation';
 import { Router, type Request, type Response } from 'express';
 import mongoose, { type Types } from 'mongoose';
 import { z } from 'zod';
@@ -7,12 +7,16 @@ import { OID, RD128, RS, tenantSchema, tenantModel } from '../../database/tenant
 import { requirePermission } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import type { RequestContext } from '../../shared/context.js';
-import { d128 } from '../../shared/decimal.js';
+import { d128, dec } from '../../shared/decimal.js';
 import { BusinessRuleError, ConflictError } from '../../shared/errors.js';
 import { sendSuccess } from '../../shared/http.js';
 import { plain } from '../../shared/serialize.js';
+import { PurityModel } from '../master/index.js';
 import { CompanyModel } from '../organisation/index.js';
 import { recordAudit } from '../platform/audit/index.js';
+
+const TROY_OUNCE_GRAMS = '31.1034768';
+const TOLA_GRAMS = '11.6638';
 
 const goldRateModelSchema = tenantSchema(
   'goldRates',
@@ -50,13 +54,15 @@ export const GoldRateRequestModel = tenantModel('GoldRateRequest', rateRequestSc
 type RateInput = z.infer<typeof goldRateSchema>;
 
 async function publishRate(ctx: RequestContext, input: RateInput, approvedBy?: string) {
+  const company = await CompanyModel.findById(ctx.companyId).lean();
+  const tola = company?.settings?.tolaGrams ? { tolaGrams: company.settings.tolaGrams } : {};
   const [rate] = await GoldRateModel.create([
     {
       companyId: ctx.companyId,
       ...(input.purityId ? { purityId: input.purityId } : {}),
       ...(input.branchId ? { branchId: input.branchId } : {}),
       basis: input.basis,
-      valuePerGram: d128(convertRate(input.value, input.unit, 'G')),
+      valuePerGram: d128(convertRate(input.value, input.unit, 'G', { ...tola })),
       enteredValue: input.value,
       enteredUnit: input.unit,
       currency: input.currency.toUpperCase(),
@@ -94,7 +100,7 @@ export async function resolveRate(
     at: Date;
   },
 ): Promise<ResolvedRate> {
-  const find = (purityId: Types.ObjectId | null, branchId: unknown) =>
+  const find = (purityId: Types.ObjectId | null, branchId: Types.ObjectId | string | null) =>
     GoldRateModel.findOne({
       companyId: ctx.companyId,
       currency: args.currency.toUpperCase(),
@@ -137,6 +143,75 @@ export function createGoldRateRouter(): Router {
       .lean();
     sendSuccess(req, res, plain(rows));
   });
+
+  /** Today's prices by purity, per gram and per tola, as a market board shows them. */
+  router.get('/board', requirePermission('gold_rate:read'), async (req, res) => {
+    const company = await CompanyModel.findById(req.ctx.companyId).lean();
+    const purities = await PurityModel.find({ companyId: req.ctx.companyId, archivedAt: null })
+      .sort({ fineness: -1 })
+      .lean();
+    const tolaGrams = company?.settings?.tolaGrams ?? TOLA_GRAMS;
+    const reference = await GoldRateModel.findOne({
+      companyId: req.ctx.companyId,
+      currency: company?.baseCurrency,
+      basis: 'FINE_GRAM',
+      purityId: null,
+      branchId: null,
+    })
+      .sort({ effectiveAt: -1 })
+      .lean();
+    sendSuccess(req, res, {
+      effectiveAt: reference?.effectiveAt ?? null,
+      currency: company?.baseCurrency,
+      tolaGrams,
+      rows: reference
+        ? purities.map((p) => {
+            const perGram = dec(reference.valuePerGram).times(dec(p.fineness));
+            return {
+              id: String(p._id),
+              purity: p.label,
+              fineness: dec(p.fineness).toFixed(4),
+              perGram: perGram.toFixed(2),
+              perTola: perGram.times(tolaGrams).toFixed(2),
+            };
+          })
+        : [],
+    });
+  });
+
+  /** Converts the international USD per ounce price to a local price per fine gram. */
+  router.post(
+    '/spot',
+    requirePermission('gold_rate:create'),
+    validate({ body: spotRateSchema }),
+    async (req, res) => {
+      const input = req.validated.body as z.infer<typeof spotRateSchema>;
+      const company = await CompanyModel.findById(req.ctx.companyId).lean();
+      const perGram = dec(input.usdPerOz)
+        .dividedBy(TROY_OUNCE_GRAMS)
+        .times(input.usdAed)
+        .plus(input.premiumPerGram)
+        .toDecimalPlaces(4);
+      const rate: RateInput = {
+        basis: 'FINE_GRAM',
+        value: perGram.toFixed(4),
+        unit: 'G',
+        currency: company?.baseCurrency ?? 'AED',
+        source: `SPOT ${input.usdPerOz} USD/oz at ${input.usdAed}`,
+      };
+      if (company?.settings?.rateApprovalRequired) {
+        const request = await GoldRateRequestModel.create({
+          companyId: req.ctx.companyId,
+          payload: rate,
+          status: 'PENDING',
+          requestedBy: req.ctx.userId,
+        });
+        sendSuccess(req, res, plain(request.toObject()), 202);
+        return;
+      }
+      sendSuccess(req, res, plain((await publishRate(req.ctx, rate))?.toObject()), 201);
+    },
+  );
 
   router.get('/requests', requirePermission('gold_rate:read'), async (req, res) => {
     const rows = await GoldRateRequestModel.find({

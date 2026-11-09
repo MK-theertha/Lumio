@@ -28,6 +28,8 @@ const partySchema = tenantSchema(
     notes: String,
     dateOfBirth: String,
     beneficialOwners: { type: [String], default: [] },
+    // The most fine grams this party may owe on unfixed metal. Empty means no limit.
+    metalLimitFine: D128,
     nationality: String,
     kycStatus: { type: String, default: 'NONE' },
     sanctionsStatus: {

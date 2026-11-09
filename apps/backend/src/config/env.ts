@@ -53,6 +53,14 @@ const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Requests per minute from one address. An office behind one IP shares this allowance.
+    GENERAL_RATE_LIMIT: z.coerce.number().int().positive().default(600),
+    // OTLP collector for traces, for example http://collector:4318. Empty disables tracing.
+    OTEL_EXPORTER_OTLP_ENDPOINT: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.url().optional()),
     // Prometheus port for this process. Never exposed through the public proxy.
     METRICS_PORT: z.coerce.number().int().positive().optional(),
     // Where the nightly job fetches the UN list. Empty disables the refresh.

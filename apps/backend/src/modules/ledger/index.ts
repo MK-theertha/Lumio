@@ -5,6 +5,7 @@ export {
   JournalLineModel,
   LEDGER_ROLES,
   LedgerAccountModel,
+  PostingProfileModel,
   type LedgerRole,
 } from './ledger.models.js';
 export {

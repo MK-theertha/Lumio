@@ -97,7 +97,7 @@ const loadEntries = (companyId: Types.ObjectId) =>
   SanctionsEntryModel.find({ companyId }).lean() as unknown as Promise<Entry[]>;
 
 async function refreshStatus(companyId: Types.ObjectId, partyId: Types.ObjectId): Promise<void> {
-  const count = (status: string) =>
+  const count = (status: 'OPEN' | 'CONFIRMED') =>
     SanctionsMatchModel.countDocuments({ companyId, partyId, status });
   const sanctionsStatus =
     (await count('CONFIRMED')) > 0

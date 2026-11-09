@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { canonicalJson } from '@lumio/shared-utils';
-import mongoose, { type Types } from 'mongoose';
+import mongoose, { type Model, type Types } from 'mongoose';
 import { RS, tenantModel, tenantSchema } from '../../database/tenant-schema.js';
 import { dec, Decimal } from '../../shared/decimal.js';
 import { plain } from '../../shared/serialize.js';
@@ -12,7 +12,9 @@ import {
   JournalEntryModel,
   JournalLineModel,
   LedgerAccountModel,
+  PostingProfileModel,
 } from '../ledger/index.js';
+import { MetalTransactionModel } from '../metal/index.js';
 import { notify } from '../notifications/index.js';
 import { CreditNoteModel, PurchaseInvoiceModel, SalesInvoiceModel } from '../trade/index.js';
 import { verifyAuditSeals } from './audit-seal.js';
@@ -109,8 +111,11 @@ const stockMatchesMovements: Check = async (companyId) => {
 async function ledgerBalance(companyId: Types.ObjectId, role: string): Promise<Decimal> {
   const account = await LedgerAccountModel.findOne({ companyId, systemRole: role }).lean();
   if (!account) return new Decimal(0);
+  // A role can post to branch accounts as well as its main one.
+  const profiles = await PostingProfileModel.find({ companyId, role }).lean();
+  const accountIds = [account._id, ...profiles.map((p) => p.accountId)];
   const [total] = await JournalLineModel.aggregate([
-    { $match: { companyId, accountId: account._id } },
+    { $match: { companyId, accountId: { $in: accountIds } } },
     { $group: { _id: null, debit: { $sum: '$debit' }, credit: { $sum: '$credit' } } },
   ]);
   return dec(total?.debit).minus(dec(total?.credit));
@@ -146,6 +151,29 @@ const controlAccountsMatch: Check = async (companyId) => {
   ];
 };
 
+/** The unfixed metal account equals the carrying value held against parties. */
+const metalMatchesLedger: Check = async (companyId) => {
+  const [total] = await PartyBalanceModel.aggregate([
+    { $match: { companyId } },
+    { $group: { _id: null, value: { $sum: '$metalValue' }, fine: { $sum: '$metalFine' } } },
+  ]);
+  const [entries] = await MetalTransactionModel.aggregate([
+    { $match: { companyId } },
+    { $group: { _id: null, fine: { $sum: '$fineGrams' } } },
+  ]);
+  const fineGap = dec(total?.fine).minus(dec(entries?.fine)).abs();
+  return [
+    ...compare(
+      'Unfixed metal',
+      (await ledgerBalance(companyId, 'METAL_CLEARING')).negated(),
+      dec(total?.value),
+    ),
+    ...(fineGap.greaterThan(WEIGHT_TOLERANCE)
+      ? [`Party metal balances differ from their entries by ${fineGap.toFixed(4)} fine grams.`]
+      : []),
+  ];
+};
+
 /** I8: business numbers run without gaps inside each series. */
 const numbersAreGapless: Check = async (companyId) => {
   const problems: string[] = [];
@@ -156,7 +184,8 @@ const numbersAreGapless: Check = async (companyId) => {
     ['Credit note', CreditNoteModel],
     ['Journal', JournalEntryModel],
   ] as const;
-  for (const [label, model] of sources) {
+  for (const [label, source] of sources) {
+    const model = source as unknown as Model<{ number?: string }>;
     const rows = await model
       .find({ companyId, number: mongoose.trusted({ $type: 'string' }) })
       .select({ number: 1 })
@@ -189,7 +218,8 @@ const journalsTraceToSource: Check = async (companyId) => {
     CREDIT_NOTE: CreditNoteModel,
   } as const;
   const problems: string[] = [];
-  for (const [sourceType, model] of Object.entries(sources)) {
+  for (const [sourceType, source] of Object.entries(sources)) {
+    const model = source as unknown as Model<{ _id: Types.ObjectId }>;
     const entries = await JournalEntryModel.find({ companyId, sourceType })
       .select({ number: 1, sourceId: 1 })
       .lean();
@@ -254,6 +284,7 @@ const CHECKS: Record<string, Check> = {
   'Stock equals movements': stockMatchesMovements,
   'Inventory equals ledger': inventoryMatchesLedger,
   'Control accounts equal party balances': controlAccountsMatch,
+  'Unfixed metal equals ledger': metalMatchesLedger,
   'Numbers are gapless': numbersAreGapless,
   'Journals trace to a source': journalsTraceToSource,
   'Closed periods are untouched': closedPeriodsUntouched,

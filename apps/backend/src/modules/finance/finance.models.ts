@@ -51,6 +51,8 @@ const partyBalanceSchema = tenantSchema('partyBalances', {
   payable: RD128,
   // Reserved for gram-denominated accounts, pending open question Q9.
   metalFine: D128,
+  // What the balance is carried at in the books until a price is agreed.
+  metalValue: D128,
 });
 partyBalanceSchema.index({ companyId: 1, partyId: 1 }, { unique: true });
 export const PartyBalanceModel = tenantModel('PartyBalance', partyBalanceSchema);

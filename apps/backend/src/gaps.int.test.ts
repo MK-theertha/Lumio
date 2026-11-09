@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import type { Redis } from 'ioredis';
-import type mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -21,6 +21,7 @@ import {
   type Tenant,
 } from '../test/tenant-kit.js';
 import { createApp } from './app.js';
+import { migrations } from './database/migrations/index.js';
 import { initRuntime } from './config/runtime.js';
 import { JournalLineModel } from './modules/ledger/index.js';
 import { createFirstPlatformAdmin, type EmailMessage } from './modules/identity/index.js';
@@ -146,6 +147,37 @@ describe('going live', () => {
     } finally {
       initRuntime(testEnv);
     }
+  });
+});
+
+describe('migrations on a company that already exists', () => {
+  const company = () => oid(t.companyId);
+  const roles = () => mongoose.connection.db!.collection('roles');
+  const run = async (id: string) => {
+    const migration = migrations.find((m) => m.id === id);
+    if (!migration) throw new Error(`No migration ${id}`);
+    await migration.up(mongoose.connection.db!);
+  };
+
+  it('adds new permissions without undoing a company narrowing its own roles', async () => {
+    await roles().deleteOne({ companyId: company(), name: 'Compliance Officer' });
+    await roles().updateOne({ companyId: company(), name: 'Accountant' }, {
+      $pull: { permissions: { $in: ['bank_reconciliation:manage', 'journal:post'] } },
+    } as never);
+    await run('004-new-role-permissions');
+    const officer = await roles().findOne({ companyId: company(), name: 'Compliance Officer' });
+    expect(officer?.permissions).toContain('goaml:approve');
+    const accountant = await roles().findOne({ companyId: company(), name: 'Accountant' });
+    expect(accountant?.permissions).toContain('bank_reconciliation:manage');
+    expect(accountant?.permissions).not.toContain('journal:post');
+  });
+
+  it('adds the goods received account once', async () => {
+    const accounts = mongoose.connection.db!.collection('ledgerAccounts');
+    await accounts.deleteOne({ companyId: company(), systemRole: 'GRNI' });
+    await run('006-goods-receipts');
+    await run('006-goods-receipts');
+    expect(await accounts.countDocuments({ companyId: company(), systemRole: 'GRNI' })).toBe(1);
   });
 });
 

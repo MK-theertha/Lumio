@@ -24,6 +24,8 @@ let b: Tenant;
 const LIST_FOR: [RegExp, string][] = [
   [/^\/sanctions\/parties\//, '/parties'],
   [/^\/party-statements\//, '/parties'],
+  [/^\/parties\/:id\/activities$/, '/parties'],
+  [/^\/metal-accounts\//, '/parties'],
   [/^\/statements\/general-ledger\//, '/ledger-accounts'],
   [/^\/e-invoices\/sales\//, '/sales-invoices'],
   [/^\/journals\//, '/journals'],
@@ -48,6 +50,7 @@ const BODIES: Record<string, () => object> = {
   }),
   'POST /bank-statement-lines/:id/match': () => ({ paymentIds: [a.bank] }),
   'POST /bank-statement-lines/:id/net': () => ({ otherLineId: a.bank }),
+  'POST /parties/:id/activities': () => ({ note: 'x' }),
   'POST /compliance-cases/:id/decision': () => ({ status: 'CLEARED', decisionNote: 'x' }),
   'POST /goaml-reports/:id/submitted': () => ({ fiuReference: 'x' }),
   'POST /journals/:id/reverse': () => ({ reason: 'x' }),
@@ -224,6 +227,11 @@ beforeAll(async () => {
   for (const party of parties.body.data as { id: string }[]) {
     await post(`/sanctions/parties/${party.id}/screen`);
   }
+  await post('/posting-profiles', {
+    role: 'SALES_GOLD',
+    branchId: a.branchId,
+    accountId: one!.id,
+  });
   const reports = await request(app).get(api('/reports')).set(auth(a.token));
   await post('/report-schedules', {
     reportKey: reports.body.data[0].key,

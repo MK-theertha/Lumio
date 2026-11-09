@@ -104,6 +104,42 @@ interface StatementRow {
   balance: string;
 }
 
+function ActivityNotes({ partyId }: { partyId: string }) {
+  const queryClient = useQueryClient();
+  const [note, setNote] = useState('');
+  const query = useQuery({
+    queryKey: ['activities', partyId],
+    queryFn: () => apiGet<Row[]>(`/parties/${partyId}/activities`),
+  });
+  const add = useMutation({
+    mutationFn: () => apiSend('post', `/parties/${partyId}/activities`, { note }),
+    onSuccess: async () => {
+      setNote('');
+      await queryClient.invalidateQueries({ queryKey: ['activities', partyId] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  return (
+    <Card className="space-y-2">
+      <h2 className="text-sm font-semibold">Activity notes</h2>
+      <div className="flex gap-2">
+        <Input aria-label="New note" value={note} onChange={(e) => setNote(e.target.value)} />
+        <Button disabled={!note || add.isPending} onClick={() => add.mutate()}>
+          Add
+        </Button>
+      </div>
+      <ul className="space-y-1 text-sm">
+        {query.data?.map((row) => (
+          <li key={row.id}>
+            <span className="text-muted-foreground">{(row.at as string).slice(0, 10)}</span>{' '}
+            {row.note as string}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 export function PartyStatementPage() {
   const parties = useRefOptions('/parties');
   const [partyId, setPartyId] = useState('');
@@ -146,6 +182,7 @@ export function PartyStatementPage() {
         </Field>
         <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
       </Card>
+      {partyId && <ActivityNotes partyId={partyId} />}
       {partyId && (
         <QueryState query={query} empty={query.data?.rows.length === 0}>
           <p className="text-sm text-muted-foreground">

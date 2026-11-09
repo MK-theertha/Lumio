@@ -601,6 +601,7 @@ export function GoldRatesPage() {
                 <option value="G">Gram</option>
                 <option value="KG">Kilogram</option>
                 <option value="TOZ">Troy ounce</option>
+                <option value="TOLA">Tola</option>
               </Select>
             </Field>
             <Field label="Currency">

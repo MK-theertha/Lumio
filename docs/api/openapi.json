@@ -1144,6 +1144,18 @@
                     "minLength": 1,
                     "maxLength": 200
                   },
+                  "emirate": {
+                    "type": "string",
+                    "enum": [
+                      "ABU_DHABI",
+                      "DUBAI",
+                      "SHARJAH",
+                      "AJMAN",
+                      "UMM_AL_QUWAIN",
+                      "RAS_AL_KHAIMAH",
+                      "FUJAIRAH"
+                    ]
+                  },
                   "address": {
                     "type": "string",
                     "maxLength": 1000
@@ -1279,6 +1291,18 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 200
+                  },
+                  "emirate": {
+                    "type": "string",
+                    "enum": [
+                      "ABU_DHABI",
+                      "DUBAI",
+                      "SHARJAH",
+                      "AJMAN",
+                      "UMM_AL_QUWAIN",
+                      "RAS_AL_KHAIMAH",
+                      "FUJAIRAH"
+                    ]
                   },
                   "address": {
                     "type": "string",
@@ -1480,6 +1504,10 @@
                       "discountApprovalPercent": {
                         "type": "string",
                         "pattern": "^-?\\d+(\\.\\d+)?$"
+                      },
+                      "tolaGrams": {
+                        "type": "string",
+                        "pattern": "^-?\\d+(\\.\\d+)?$"
                       }
                     },
                     "additionalProperties": false
@@ -1490,6 +1518,31 @@
             }
           }
         },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/company/presets/dubai": {
+      "post": {
+        "tags": [
+          "company"
+        ],
+        "summary": "POST /company/presets/dubai",
+        "description": "Authentication: bearer token. Permissions: settings:manage.",
+        "parameters": [],
         "responses": {
           "2XX": {
             "description": "Success"
@@ -1659,6 +1712,22 @@
                     "type": "string",
                     "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
+                  "aggregateDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 365
+                  },
+                  "partyTypes": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "INDIVIDUAL",
+                        "BUSINESS"
+                      ]
+                    }
+                  },
                   "severity": {
                     "type": "string",
                     "enum": [
@@ -1818,6 +1887,22 @@
                   "thresholdAmount": {
                     "type": "string",
                     "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "aggregateDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 365
+                  },
+                  "partyTypes": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "INDIVIDUAL",
+                        "BUSINESS"
+                      ]
+                    }
                   },
                   "severity": {
                     "type": "string",
@@ -3230,7 +3315,8 @@
                     "enum": [
                       "G",
                       "KG",
-                      "TOZ"
+                      "TOZ",
+                      "TOLA"
                     ]
                   },
                   "currency": {
@@ -3255,6 +3341,31 @@
             }
           }
         },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gold-rates/board": {
+      "get": {
+        "tags": [
+          "gold-rates"
+        ],
+        "summary": "GET /gold-rates/board",
+        "description": "Authentication: bearer token. Permissions: gold_rate:read.",
+        "parameters": [],
         "responses": {
           "2XX": {
             "description": "Success"
@@ -3350,6 +3461,61 @@
             }
           }
         ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/gold-rates/spot": {
+      "post": {
+        "tags": [
+          "gold-rates"
+        ],
+        "summary": "POST /gold-rates/spot",
+        "description": "Authentication: bearer token. Permissions: gold_rate:create.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "usdPerOz": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "usdAed": {
+                    "default": "3.6725",
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "premiumPerGram": {
+                    "default": "0",
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  }
+                },
+                "required": [
+                  "usdPerOz"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
         "responses": {
           "2XX": {
             "description": "Success"
@@ -4321,6 +4487,333 @@
         }
       }
     },
+    "/api/v1/metal-accounts": {
+      "get": {
+        "tags": [
+          "metal-accounts"
+        ],
+        "summary": "GET /metal-accounts",
+        "description": "Authentication: bearer token. Permissions: metal:read.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metal-accounts/{id}/statement": {
+      "get": {
+        "tags": [
+          "metal-accounts"
+        ],
+        "summary": "GET /metal-accounts/:id/statement",
+        "description": "Authentication: bearer token. Permissions: metal:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metal-accounts/fixes": {
+      "post": {
+        "tags": [
+          "metal-accounts"
+        ],
+        "summary": "POST /metal-accounts/fixes",
+        "description": "Authentication: bearer token. Permissions: metal:fix.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "partyId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "branchId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "fineGrams": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "ratePerFineGram": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "productKind": {
+                    "default": "BAR",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "fineness": {
+                    "default": "0.9999",
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "memo": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "partyId",
+                  "branchId",
+                  "fineGrams",
+                  "ratePerFineGram",
+                  "date"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metal-accounts/issues": {
+      "post": {
+        "tags": [
+          "metal-accounts"
+        ],
+        "summary": "POST /metal-accounts/issues",
+        "description": "Authentication: bearer token. Permissions: metal:create.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "partyId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "warehouseId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "location": {
+                    "default": "MAIN",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "productId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "pieces": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "grossWeight": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "stoneWeight": {
+                    "default": "0",
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "memo": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "lotId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  }
+                },
+                "required": [
+                  "partyId",
+                  "warehouseId",
+                  "productId",
+                  "grossWeight",
+                  "date"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metal-accounts/receipts": {
+      "post": {
+        "tags": [
+          "metal-accounts"
+        ],
+        "summary": "POST /metal-accounts/receipts",
+        "description": "Authentication: bearer token. Permissions: metal:create.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "partyId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "warehouseId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "location": {
+                    "default": "MAIN",
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "productId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "pieces": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "grossWeight": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "stoneWeight": {
+                    "default": "0",
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "date": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "memo": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "provisionalRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
+                  "tag": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "partyId",
+                  "warehouseId",
+                  "productId",
+                  "grossWeight",
+                  "date",
+                  "provisionalRate"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "tags": [
@@ -4527,6 +5020,10 @@
                       "minLength": 1,
                       "maxLength": 200
                     }
+                  },
+                  "metalLimitFine": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   }
                 },
                 "required": [
@@ -4731,8 +5228,111 @@
                       "minLength": 1,
                       "maxLength": 200
                     }
+                  },
+                  "metalLimitFine": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/parties/{id}/activities": {
+      "get": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "GET /parties/:id/activities",
+        "description": "Authentication: bearer token. Permissions: party:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "parties"
+        ],
+        "summary": "POST /parties/:id/activities",
+        "description": "Authentication: bearer token. Permissions: party:update.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "default": "NOTE",
+                    "type": "string",
+                    "enum": [
+                      "NOTE",
+                      "CALL",
+                      "MEETING",
+                      "EMAIL"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "note"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5775,6 +6375,212 @@
         }
       }
     },
+    "/api/v1/posting-profiles": {
+      "get": {
+        "tags": [
+          "posting-profiles"
+        ],
+        "summary": "GET /posting-profiles",
+        "description": "Authentication: bearer token. Permissions: ledger_account:read.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "posting-profiles"
+        ],
+        "summary": "POST /posting-profiles",
+        "description": "Authentication: bearer token. Permissions: ledger_account:create.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "branchId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "accountId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  }
+                },
+                "required": [
+                  "role",
+                  "branchId",
+                  "accountId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/posting-profiles/{id}": {
+      "delete": {
+        "tags": [
+          "posting-profiles"
+        ],
+        "summary": "DELETE /posting-profiles/:id",
+        "description": "Authentication: bearer token. Permissions: ledger_account:delete.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "posting-profiles"
+        ],
+        "summary": "GET /posting-profiles/:id",
+        "description": "Authentication: bearer token. Permissions: ledger_account:read.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "posting-profiles"
+        ],
+        "summary": "PATCH /posting-profiles/:id",
+        "description": "Authentication: bearer token. Permissions: ledger_account:update.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f\\d]{24}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "branchId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  },
+                  "accountId": {
+                    "type": "string",
+                    "pattern": "^[a-f\\d]{24}$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/products": {
       "get": {
         "tags": [
@@ -6178,6 +6984,10 @@
                     "minLength": 3,
                     "maxLength": 3
                   },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
+                  },
                   "lines": {
                     "minItems": 1,
                     "maxItems": 500,
@@ -6483,6 +7293,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3
+                  },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
                   "lines": {
                     "minItems": 1,
@@ -7180,6 +7994,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3
+                  },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
                   "lines": {
                     "minItems": 1,
@@ -8080,6 +8898,9 @@
                         "goaml:view",
                         "goaml:prepare",
                         "goaml:approve",
+                        "metal:read",
+                        "metal:create",
+                        "metal:fix",
                         "einvoice:read",
                         "einvoice:submit",
                         "bank_reconciliation:read",
@@ -8281,6 +9102,9 @@
                         "goaml:view",
                         "goaml:prepare",
                         "goaml:approve",
+                        "metal:read",
+                        "metal:create",
+                        "metal:fix",
                         "einvoice:read",
                         "einvoice:submit",
                         "bank_reconciliation:read",
@@ -8414,6 +9238,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3
+                  },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
                   "lines": {
                     "minItems": 1,
@@ -8720,6 +9548,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3
+                  },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
                   "lines": {
                     "minItems": 1,
@@ -9417,6 +10249,10 @@
                     "type": "string",
                     "minLength": 3,
                     "maxLength": 3
+                  },
+                  "exchangeRate": {
+                    "type": "string",
+                    "pattern": "^-?\\d+(\\.\\d+)?$"
                   },
                   "lines": {
                     "minItems": 1,
@@ -11573,6 +12409,179 @@
                     }
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vat-reconciliation": {
+      "get": {
+        "tags": [
+          "vat-reconciliation"
+        ],
+        "summary": "GET /vat-reconciliation",
+        "description": "Authentication: bearer token. Permissions: tax:read.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vat-return": {
+      "get": {
+        "tags": [
+          "vat-return"
+        ],
+        "summary": "GET /vat-return",
+        "description": "Authentication: bearer token. Permissions: tax:read.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vat-returns": {
+      "get": {
+        "tags": [
+          "vat-returns"
+        ],
+        "summary": "GET /vat-returns",
+        "description": "Authentication: bearer token. Permissions: tax:read.",
+        "parameters": [],
+        "responses": {
+          "2XX": {
+            "description": "Success"
+          },
+          "default": {
+            "description": "An error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "vat-returns"
+        ],
+        "summary": "POST /vat-returns",
+        "description": "Authentication: bearer token. Permissions: tax:update.",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "from": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "format": "date",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                  },
+                  "ftaReference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "ftaReference"
+                ],
                 "additionalProperties": false
               }
             }

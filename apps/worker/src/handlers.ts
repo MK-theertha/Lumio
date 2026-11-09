@@ -12,6 +12,7 @@ import {
   scanDocument,
 } from '@lumio/backend/modules/documents/index.js';
 import { issueEInvoice } from '@lumio/backend/modules/einvoice/index.js';
+import { METAL_FIXED_EVENT } from '@lumio/backend/modules/metal/index.js';
 import { NIGHTLY_EVENT, runNightlyMaintenance } from '@lumio/backend/modules/maintenance/index.js';
 import { EMAIL_EVENT, type EmailMessage } from '@lumio/backend/modules/identity/index.js';
 import {
@@ -110,6 +111,10 @@ export function createHandlers(
       await rescreenAllParties(new Types.ObjectId(event.companyId));
     },
     'purchase.posted': screen('PURCHASE_POSTED'),
+    [METAL_FIXED_EVENT]: async (event) => {
+      const { direction } = event.payload as { direction: 'SALE' | 'PURCHASE' };
+      await screen(direction === 'SALE' ? 'SALE_POSTED' : 'PURCHASE_POSTED')(event);
+    },
     'payment.posted': screen('PAYMENT_POSTED'),
   };
 }

@@ -425,7 +425,7 @@ export function dispatchTransfer(ctx: RequestContext, id: string) {
     const from = await warehouseOf(tx, transfer.fromWarehouseId);
     const company = await stockPolicy(tx);
     const lines: TransferLine[] = [];
-    for (const [index, raw] of (transfer.lines as TransferLine[]).entries()) {
+    for (const [index, raw] of (transfer.lines as unknown as TransferLine[]).entries()) {
       const { product, purity } = await productWithPurity(tx, raw.productId);
       const quantity = quantityFrom(raw.pieces, raw.grossWeight, raw.stoneWeight, purity.fineness);
       const key = {
@@ -482,7 +482,7 @@ export function receiveTransfer(ctx: RequestContext, id: string) {
     const to = await warehouseOf(tx, transfer.toWarehouseId);
     let total = new Decimal(0);
 
-    for (const [index, raw] of (transfer.lines as TransferLine[]).entries()) {
+    for (const [index, raw] of (transfer.lines as unknown as TransferLine[]).entries()) {
       const { product, purity } = await productWithPurity(tx, raw.productId);
       const quantity = quantityFrom(raw.pieces, raw.grossWeight, raw.stoneWeight, purity.fineness);
       const cost = dec(raw.cost);
@@ -667,7 +667,7 @@ export function approveCount(ctx: RequestContext, id: string) {
     if (count.createdBy === tx.userId) {
       throw new BusinessRuleError('A second person must approve this count.');
     }
-    const lines = count.lines as {
+    const lines = count.lines as unknown as {
       productId: string;
       lotId?: string;
       varianceNet: string;

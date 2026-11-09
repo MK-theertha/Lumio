@@ -33,6 +33,7 @@ export interface PdfInvoice {
   dueDate?: string;
   currency: string;
   supplierInvoiceNo?: string;
+  foreign?: { currency: string; exchangeRate: string; grandTotal: string };
   /** On a credit note, the invoice it corrects. */
   originalNumber?: string;
   notes?: string;
@@ -163,6 +164,12 @@ export function renderInvoicePdf(
       ['Currency', invoice.currency],
       ['Supplier invoice', invoice.supplierInvoiceNo],
       ['Credits invoice', invoice.originalNumber],
+      [
+        'Foreign total',
+        invoice.foreign
+          ? `${invoice.foreign.currency} ${invoice.foreign.grandTotal} at ${invoice.foreign.exchangeRate}`
+          : undefined,
+      ],
     ];
     let factY = MARGIN;
     for (const [label, value] of facts) {

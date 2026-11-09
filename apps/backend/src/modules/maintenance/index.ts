@@ -69,7 +69,7 @@ export async function raiseDocumentReminders(companyId: Types.ObjectId): Promise
       audience: row.ownerType === 'KYC' ? 'kyc:read' : 'document:read',
       severity: 'WARNING',
       title: 'Document expiring',
-      body: `${row.fileName} (${row.category}) expires on ${row.expiresAt.toISOString().slice(0, 10)}.`,
+      body: `${row.fileName} (${row.category}) expires on ${(row.expiresAt as Date).toISOString().slice(0, 10)}.`,
       link: '/documents',
     });
   }

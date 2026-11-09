@@ -9,6 +9,8 @@ import '../../modules/finance/index.js';
 import '../../modules/goaml/index.js';
 import '../../modules/identity/identity.models.js';
 import '../../modules/maintenance/index.js';
+import '../../modules/metal/index.js';
+import '../../modules/reporting/index.js';
 import '../../modules/notifications/index.js';
 import '../../modules/inventory/inventory.models.js';
 import '../../modules/master/index.js';
@@ -81,6 +83,28 @@ async function addGoodsReceivedAccount(): Promise<void> {
   }
 }
 
+async function addMetalAccounts(): Promise<void> {
+  await createCollectionsAndIndexes();
+  const companies = await CompanyModel.find().select({ _id: 1 }).lean();
+  for (const company of companies) {
+    await LedgerAccountModel.updateOne(
+      { companyId: company._id, systemRole: 'METAL_CLEARING' },
+      { $setOnInsert: { code: '1250', name: 'Unfixed metal accounts', type: 'ASSET' } },
+      { upsert: true },
+    );
+    for (const [name, permissions] of Object.entries(SYSTEM_ROLES)) {
+      await RoleModel.updateOne(
+        { companyId: company._id, name },
+        {
+          $addToSet: {
+            permissions: { $each: permissions.filter((p) => p.startsWith('metal:')) },
+          },
+        },
+      );
+    }
+  }
+}
+
 /** Append only. Never edit a migration that has shipped. */
 export const migrations: Migration[] = [
   { id: '001-kernel-indexes', up: createCollectionsAndIndexes },
@@ -89,4 +113,5 @@ export const migrations: Migration[] = [
   { id: '004-new-role-permissions', up: addComplianceDocumentAndBankPermissions },
   { id: '005-sanctions-subject-and-maintenance', up: replaceSanctionsMatchIndex },
   { id: '006-goods-receipts', up: addGoodsReceivedAccount },
+  { id: '007-metal-accounts-and-vat', up: addMetalAccounts },
 ];

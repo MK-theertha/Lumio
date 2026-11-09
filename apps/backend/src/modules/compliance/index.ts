@@ -1,6 +1,6 @@
 import { caseDecisionSchema, objectIdSchema } from '@lumio/validation';
 import { Router } from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { z } from 'zod';
 import { OID, RD128, ROID, RS, tenantSchema, tenantModel } from '../../database/tenant-schema.js';
 import { requirePermission } from '../../middleware/auth.js';
@@ -40,6 +40,8 @@ const ruleSchema = tenantSchema(
     trigger: RS,
     amlClasses: { type: [String], default: [] },
     thresholdAmount: RD128,
+    aggregateDays: Number,
+    partyTypes: { type: [String], default: [] },
     severity: RS,
     active: { type: Boolean, default: true },
     legalReference: String,
@@ -72,6 +74,37 @@ caseSchema.index({ companyId: 1, ruleId: 1, sourceId: 1 }, { unique: true });
 caseSchema.index({ companyId: 1, status: 1, _id: -1 });
 export const ComplianceCaseModel = tenantModel('ComplianceCase', caseSchema);
 
+const exposureSchema = tenantSchema('amlExposures', {
+  partyId: ROID,
+  trigger: RS,
+  amlClass: String,
+  sourceId: RS,
+  amount: RD128,
+  at: { type: Date, required: true },
+});
+exposureSchema.index({ companyId: 1, trigger: 1, sourceId: 1 }, { unique: true });
+exposureSchema.index({ companyId: 1, partyId: 1, trigger: 1, at: -1 });
+export const AmlExposureModel = tenantModel('AmlExposure', exposureSchema);
+
+/** The total for one party across the window, so splitting a payment does not avoid a report. */
+async function linkedTotal(
+  companyId: Types.ObjectId,
+  event: ScreenableEvent,
+  rule: { amlClasses: string[]; aggregateDays?: number | null },
+) {
+  const since = new Date(Date.now() - (rule.aggregateDays ?? 0) * 86_400_000);
+  const rows = await AmlExposureModel.find({
+    companyId,
+    partyId: event.partyId,
+    trigger: event.trigger,
+    at: mongoose.trusted({ $gte: since }),
+    ...(rule.amlClasses.length ? { amlClass: mongoose.trusted({ $in: rule.amlClasses }) } : {}),
+  })
+    .select({ amount: 1 })
+    .lean();
+  return rows.reduce((sum, row) => sum.plus(dec(row.amount)), dec('0'));
+}
+
 export interface ScreenableEvent {
   companyId: string;
   trigger: 'SALE_POSTED' | 'PURCHASE_POSTED' | 'PAYMENT_POSTED';
@@ -94,10 +127,28 @@ export async function screenTransaction(event: ScreenableEvent): Promise<number>
     active: true,
     archivedAt: null,
   }).lean();
+  // Recorded first, and once per source, so a redelivered event is not counted twice.
+  await AmlExposureModel.updateOne(
+    { companyId, trigger: event.trigger, sourceId: event.sourceId },
+    {
+      $setOnInsert: {
+        partyId: event.partyId,
+        amount: d128(event.amount),
+        at: new Date(),
+        ...(event.amlClass ? { amlClass: event.amlClass } : {}),
+      },
+    },
+    { upsert: true },
+  );
+  const party = await PartyModel.findOne({ companyId, _id: event.partyId }).lean();
   let opened = 0;
   for (const rule of rules) {
     if (rule.amlClasses.length && !rule.amlClasses.includes(event.amlClass ?? '')) continue;
-    if (dec(event.amount).lessThan(dec(rule.thresholdAmount))) continue;
+    if (rule.partyTypes.length && !rule.partyTypes.includes(party?.type ?? '')) continue;
+    const amount = rule.aggregateDays
+      ? await linkedTotal(companyId, event, rule)
+      : dec(event.amount);
+    if (amount.lessThan(dec(rule.thresholdAmount))) continue;
     const result = await ComplianceCaseModel.updateOne(
       { companyId, ruleId: rule._id, sourceId: event.sourceId },
       {

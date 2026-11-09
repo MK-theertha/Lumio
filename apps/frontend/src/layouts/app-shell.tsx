@@ -55,6 +55,7 @@ const NAV: NavGroup[] = [
       { to: '/sales', label: 'Sales invoices', permission: 'sale:read' },
       { to: '/e-invoices', label: 'E-invoices', permission: 'einvoice:read' },
       { to: '/customers', label: 'Customers', permission: 'party:read' },
+      { to: '/party-pricing', label: 'Party pricing', permission: 'party:read' },
     ],
   },
   {
@@ -85,7 +86,9 @@ const NAV: NavGroup[] = [
     label: 'Gold',
     icon: Coins,
     items: [
+      { to: '/gold-rates/board', label: 'Rate board', permission: 'gold_rate:read' },
       { to: '/gold-rates', label: 'Gold rates', permission: 'gold_rate:read' },
+      { to: '/metal-accounts', label: 'Metal accounts', permission: 'metal:read' },
       { to: '/purities', label: 'Purities', permission: 'purity:read' },
     ],
   },
@@ -114,6 +117,8 @@ const NAV: NavGroup[] = [
       { to: '/statements', label: 'Statements', permission: 'financials:view_cost' },
       { to: '/tax-codes', label: 'Tax codes', permission: 'tax:read' },
       { to: '/tax-rules', label: 'Tax rules', permission: 'tax:read' },
+      { to: '/vat-return', label: 'VAT return', permission: 'tax:read' },
+      { to: '/posting-profiles', label: 'Posting profiles', permission: 'ledger_account:read' },
     ],
   },
   {

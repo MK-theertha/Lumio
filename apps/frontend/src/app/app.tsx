@@ -8,6 +8,8 @@ import * as accounting from '@/features/accounting/accounting-pages';
 import { BankReconciliationPage } from '@/features/accounting/bank-reconciliation-page';
 import { ForgotPasswordPage, LoginPage, SetPasswordPage } from '@/features/auth/auth-pages';
 import { GoamlReportsPage, SanctionsPage } from '@/features/compliance/compliance-pages';
+import { MetalAccountsPage, RateBoardPage } from '@/features/metal/metal-pages';
+import { VatReturnPage } from '@/features/accounting/vat-return-page';
 import { DashboardPage } from '@/features/dashboard/dashboard-page';
 import { DocumentsPage } from '@/features/documents/documents';
 import * as inventory from '@/features/inventory/inventory-pages';
@@ -51,6 +53,11 @@ const guarded: [string, string, ReactNode][] = [
   ['/products', 'product:read', <master.ProductsPage key="p" />],
   ['/purities', 'purity:read', <master.PuritiesPage key="pu" />],
   ['/gold-rates', 'gold_rate:read', <inventory.GoldRatesPage key="g" />],
+  ['/gold-rates/board', 'gold_rate:read', <RateBoardPage key="gb" />],
+  ['/metal-accounts', 'metal:read', <MetalAccountsPage key="ma" />],
+  ['/vat-return', 'tax:read', <VatReturnPage key="vr" />],
+  ['/party-pricing', 'party:read', <master.PartyPricingPage key="pp" />],
+  ['/posting-profiles', 'ledger_account:read', <master.PostingProfilesPage key="ppf" />],
   ['/stock', 'stock:read', <inventory.StockPage key="st" />],
   ['/stock/adjustments', 'stock:read', <inventory.AdjustmentsPage key="a" />],
   ['/stock/transfers', 'stock:read', <inventory.TransfersPage key="t" />],

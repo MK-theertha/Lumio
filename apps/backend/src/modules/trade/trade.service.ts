@@ -45,10 +45,10 @@ import {
   GoodsReceiptModel,
   PurchaseInvoiceModel,
   SalesInvoiceModel,
+  type TradeInvoiceRow,
 } from './trade.models.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- sales and purchases share one schema
-const modelOf = (direction: Direction): Model<any> =>
+const modelOf = (direction: Direction): Model<TradeInvoiceRow> =>
   direction === 'SALE' ? SalesInvoiceModel : PurchaseInvoiceModel;
 
 const LABEL = {
@@ -100,6 +100,8 @@ interface ClaimedReceipt {
 export interface TradeDocument {
   goodsReceiptId?: Types.ObjectId;
   currency: string;
+  exchangeRate?: Types.Decimal128;
+  foreign?: Record<string, string>;
   _id: Types.ObjectId;
   number?: string;
   status: string;
@@ -123,14 +125,65 @@ export interface TradeDocument {
   openItemId?: Types.ObjectId;
 }
 
-/** Until foreign currency accounting is agreed (question Q13), a face value would be booked as AED. */
-async function assertBaseCurrency(tx: TransactionalContext, currency: string): Promise<void> {
+const CONVERTED_LINE_FIELDS = [
+  'goldValue',
+  'wastageValue',
+  'makingCharge',
+  'discount',
+  'taxableValue',
+  'taxAmount',
+  'notionalTax',
+] as const;
+
+/**
+ * The books are kept in the base currency, so a foreign invoice is converted when it is posted at
+ * the rate agreed on the document. Its foreign figures are kept on the invoice for reference.
+ */
+async function toBaseCurrency(tx: TransactionalContext, doc: TradeDocument): Promise<void> {
   const company = await CompanyModel.findById(tx.companyId).session(tx.session).lean();
-  if (company && company.baseCurrency !== currency) {
+  if (!company || company.baseCurrency === doc.currency) return;
+  if (!doc.exchangeRate) {
     throw new BusinessRuleError(
-      `Only ${company.baseCurrency} invoices can be posted until foreign currency accounting is set up.`,
+      `Enter an exchange rate to post this ${doc.currency} invoice in ${company.baseCurrency}.`,
     );
   }
+  const rate = dec(doc.exchangeRate);
+  const scale = company.settings?.pricing?.moneyScale ?? 2;
+  const convert = (value: Types.Decimal128 | undefined) =>
+    d128(dec(value).times(rate).toDecimalPlaces(scale));
+  doc.foreign = {
+    currency: doc.currency,
+    exchangeRate: dec(doc.exchangeRate).toFixed(),
+    taxableTotal: dec(doc.taxableTotal).toFixed(2),
+    taxTotal: dec(doc.taxTotal).toFixed(2),
+    grandTotal: dec(doc.grandTotal).toFixed(2),
+  };
+  doc.lines = doc.lines.map((line) => {
+    const converted: Record<string, unknown> = { ...line };
+    for (const field of CONVERTED_LINE_FIELDS) {
+      if (line[field as keyof TradeLine] !== undefined) {
+        converted[field] = convert(line[field as keyof TradeLine] as Types.Decimal128);
+      }
+    }
+    // Rebuilt from its parts, so each line still adds up exactly after rounding.
+    converted.lineTotal = d128(
+      dec(converted.taxableValue as Types.Decimal128).plus(
+        dec(converted.taxAmount as Types.Decimal128),
+      ),
+    );
+    return converted as unknown as TradeLine;
+  });
+  const total = (pick: (l: TradeLine) => Types.Decimal128 | undefined) =>
+    d128(doc.lines.reduce((sum, l) => sum.plus(dec(pick(l))), new Decimal(0)));
+  doc.taxableTotal = total((l) => l.taxableValue);
+  doc.taxTotal = total((l) => l.taxAmount);
+  doc.discountTotal = total((l) => l.discount);
+  doc.grandTotal = total((l) => l.lineTotal);
+  doc.plannedPayments = doc.plannedPayments.map((payment) => ({
+    ...payment,
+    amount: dec(payment.amount).times(rate).toDecimalPlaces(scale).toFixed(),
+  }));
+  doc.currency = company.baseCurrency;
 }
 
 async function claimGoodsReceipt(
@@ -192,6 +245,7 @@ async function priced(ctx: RequestContext, direction: Direction, input: TradeInp
     ...(input.dueDate ? { dueDate: new Date(input.dueDate) } : {}),
     ...(input.supplierInvoiceNo ? { supplierInvoiceNo: input.supplierInvoiceNo } : {}),
     ...(input.goodsReceiptId ? { goodsReceiptId: input.goodsReceiptId } : {}),
+    ...(input.exchangeRate ? { exchangeRate: d128(input.exchangeRate) } : {}),
     ...(input.notes ? { notes: input.notes } : {}),
     lines,
     plannedPayments: input.payments,
@@ -215,7 +269,7 @@ export async function createDraft(ctx: RequestContext, direction: Direction, inp
     companyId: ctx.companyId,
     status: 'DRAFT',
     createdBy: ctx.userId,
-  });
+  } as unknown as TradeInvoiceRow);
   await recordAudit(ctx, {
     action: `${LABEL[direction].entity}.create`,
     entityType: LABEL[direction].entity,
@@ -489,7 +543,7 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
       throw new ConflictError('This document cannot be posted in its current state.');
     }
     await assertPartyNotOnHold(tx, doc.partyId);
-    await assertBaseCurrency(tx, doc.currency);
+    await toBaseCurrency(tx, doc);
     const label = LABEL[direction];
     const number = await nextNumber(tx, company, label.series, doc.branchId, doc.docDate);
     const receipt = doc.goodsReceiptId ? await claimGoodsReceipt(tx, doc, id) : null;
@@ -566,6 +620,12 @@ export function postDocument(ctx: RequestContext, direction: Direction, id: stri
             number,
             status: 'POSTED',
             lines,
+            currency: doc.currency,
+            taxableTotal: doc.taxableTotal,
+            taxTotal: doc.taxTotal,
+            discountTotal: doc.discountTotal,
+            grandTotal: doc.grandTotal,
+            ...(doc.foreign ? { foreign: doc.foreign } : {}),
             postedBy: tx.userId,
             postedAt: new Date(),
             postedHash,

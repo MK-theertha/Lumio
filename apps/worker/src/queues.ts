@@ -1,6 +1,7 @@
 import type { PublishableEvent, Publisher } from '@lumio/backend/modules/platform/outbox/index.js';
 import { NIGHTLY_EVENT } from '@lumio/backend/modules/maintenance/index.js';
 import { countJob } from '@lumio/backend/shared/metrics.js';
+import { traceJob } from '@lumio/backend/shared/tracing.js';
 import { Queue, Worker, type ConnectionOptions, type Job } from 'bullmq';
 import type { Logger } from 'pino';
 
@@ -59,7 +60,7 @@ export function createEventWorker(
     DOMAIN_EVENTS_QUEUE,
     async (job: Job<PublishableEvent, void, string>) => {
       const handler = handlers[job.data.type];
-      if (handler) await handler(job.data);
+      if (handler) await traceJob(job.data.type, job.data.correlationId, () => handler(job.data));
     },
     { connection, concurrency: 10 },
   );

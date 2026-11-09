@@ -10,6 +10,7 @@ import {
   JournalEntryModel,
   JournalLineModel,
   LedgerAccountModel,
+  PostingProfileModel,
   type LedgerRole,
 } from './ledger.models.js';
 
@@ -54,7 +55,21 @@ export function assertOpenPeriod(ctx: RequestContext, date: Date) {
     });
 }
 
-async function accountByRole(ctx: RequestContext, role: LedgerRole): Promise<Types.ObjectId> {
+async function accountByRole(
+  ctx: RequestContext,
+  role: LedgerRole,
+  branchId: Types.ObjectId | string,
+): Promise<Types.ObjectId> {
+  // A branch can post a role to its own account, such as a branch sales account.
+  const profile = await PostingProfileModel.findOne({
+    companyId: ctx.companyId,
+    role,
+    branchId,
+    archivedAt: null,
+  })
+    .session(ctx.session ?? null)
+    .lean();
+  if (profile) return profile.accountId;
   const account = await LedgerAccountModel.findOne({ companyId: ctx.companyId, systemRole: role })
     .session(ctx.session ?? null)
     .lean();
@@ -86,7 +101,7 @@ export async function postJournal(ctx: RequestContext, request: PostingRequest) 
       throw new BusinessRuleError('Journal amounts must not be negative.');
     }
     const accountId = line.role
-      ? await accountByRole(ctx, line.role)
+      ? await accountByRole(ctx, line.role, line.branchId ?? request.branchId)
       : new Types.ObjectId(String(line.accountId));
     resolved.push({
       accountId,
@@ -221,7 +236,7 @@ function changePeriod(
   note: Record<string, unknown> = {},
 ) {
   return FinancialPeriodModel.findOneAndUpdate(
-    { companyId: ctx.companyId, _id: id, status: expected },
+    { companyId: ctx.companyId, _id: id, status: expected as 'OPEN' | 'CLOSING' | 'CLOSED' },
     {
       $set: { status, ...extra },
       $push: { history: { action, by: ctx.userId, at: new Date(), ...extra, ...note } },
